@@ -21,10 +21,8 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log('Verificando sessão...');
     // Verificar sessão atual
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('Sessão encontrada:', session);
       setUser(session?.user ?? null);
       setLoading(false);
     }).catch(error => {
@@ -34,7 +32,6 @@ function App() {
 
     // Ouvir mudanças na autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Mudança no estado de autenticação:', event, session);
       setUser(session?.user ?? null);
     });
 
@@ -43,16 +40,12 @@ function App() {
 
   useEffect(() => {
     if (user) {
-      console.log('Usuário autenticado, carregando dados...', user);
       loadCards();
       loadIncomeTypes();
-    } else {
-      console.log('Usuário não autenticado');
     }
   }, [user]);
 
   const loadCards = async () => {
-    console.log('Carregando cartões...');
     const { data, error } = await supabase
       .from('cards')
       .select('*')
@@ -65,12 +58,10 @@ function App() {
       return;
     }
 
-    console.log('Cartões carregados:', data);
     setCards(data || []);
   };
 
   const loadIncomeTypes = async () => {
-    console.log('Carregando tipos de entrada...');
     const { data, error } = await supabase
       .from('income_types')
       .select('*')
@@ -83,7 +74,6 @@ function App() {
       return;
     }
 
-    console.log('Tipos de entrada carregados:', data);
     setIncomeTypes(data || []);
   };
 
