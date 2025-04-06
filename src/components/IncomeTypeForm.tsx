@@ -10,23 +10,43 @@ export function IncomeTypeForm({ onSubmit }: IncomeTypeFormProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-
     try {
-      const { error } = await supabase
-        .from('income_types')
-        .insert([{ name, description }]);
+      setIsLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
 
-      if (error) throw error;
+      const incomeTypeData = {
+        name,
+        description,
+        user_id: user.id
+      };
+
+      const { data, error } = await supabase
+        .from('income_types')
+        .insert([incomeTypeData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Erro detalhado:', error);
+        console.error('Código do erro:', error.code);
+        console.error('Mensagem do erro:', error.message);
+        throw error;
+      }
 
       setName('');
       setDescription('');
       onSubmit();
     } catch (error) {
-      console.error('Erro ao cadastrar tipo de entrada:', error);
+      console.error('Erro ao cadastrar tipo de receita:', error);
+      setError('Erro ao cadastrar tipo de receita. Tente novamente.');
     } finally {
       setIsLoading(false);
     }
@@ -75,3 +95,4 @@ export function IncomeTypeForm({ onSubmit }: IncomeTypeFormProps) {
     </form>
   );
 } 
+ 

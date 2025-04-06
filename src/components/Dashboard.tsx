@@ -1,265 +1,651 @@
 import { useEffect, useState } from 'react';
-import { Card, Transaction, IncomeType } from '../types';
+import { Card, Transaction, IncomeType, Category } from '../types';
 import { supabase } from '../lib/supabase';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, ReferenceLine } from 'recharts';
-import { Receipt } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, ReferenceLine, ComposedChart, Area, Legend } from 'recharts';
+import { Receipt, CreditCard, Calendar, Tag } from 'lucide-react';
+import { formatCurrency } from '../utils';
 
-interface DashboardProps {
-  cards: Card[];
+interface ExpenseByCard {
+  cardId: string;
+  amount: number;
+  month: string;
 }
 
-export function Dashboard({ cards }: DashboardProps) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [incomeTypes, setIncomeTypes] = useState<IncomeType[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
+interface DailyBalance {
+  date: string;
+  income: number;
+  expense: number;
+  balance: number;
+}
+
+interface CategoryExpense {
+  category: string;
+  amount: number;
+  percentage: number;
+}
+
+interface InstallmentExpense {
+  id: string;
+  description: string;
+  amount: number;
+  remainingAmount: number;
+  installments: {
+    total: number;
+    current: number;
+  };
+  remainingInstallments: number;
+}
+
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
+export function Dashboard() {
   const [loading, setLoading] = useState(true);
+  const [balance, setBalance] = useState(0);
+  const [totalIncome, setTotalIncome] = useState(0);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [expensesByCard, setExpensesByCard] = useState<{ name: string; amount: number }[]>([]);
+  const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([]);
+  const [categoryExpenses, setCategoryExpenses] = useState<CategoryExpense[]>([]);
+  const [installmentExpenses, setInstallmentExpenses] = useState<InstallmentExpense[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Record<string, Category>>({});
+  const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'expenses'>('overview');
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [cards, setCards] = useState<Card[]>([]);
 
   useEffect(() => {
-    loadTransactions();
-    loadIncomeTypes();
+    fetchData();
   }, []);
 
-  const loadTransactions = async () => {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .order('date', { ascending: false })
-      .limit(10);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
 
-    if (error) {
-      console.error('Erro ao carregar transações:', error);
-      return;
-    }
+      // Buscar cartões primeiro
+      const { data: cardsData, error: cardsError } = await supabase
+        .from('cards')
+        .select('*');
 
-    setTransactions(data || []);
-    setLoading(false);
-  };
-
-  const loadIncomeTypes = async () => {
-    const { data, error } = await supabase
-      .from('income_types')
-      .select('*')
-      .order('name');
-
-    if (error) {
-      console.error('Erro ao carregar tipos de entrada:', error);
-      return;
-    }
-
-    setIncomeTypes(data || []);
-  };
-
-  const totalExpenses = transactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalIncome = transactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const balance = totalIncome - totalExpenses;
-
-  // Preparar dados para o gráfico de pizza de entradas/saídas do mês selecionado
-  const monthlyIncomeExpense = transactions
-    .filter(t => {
-      const date = new Date(t.date);
-      return date.getMonth() === selectedMonth.getMonth() && 
-             date.getFullYear() === selectedMonth.getFullYear();
-    })
-    .reduce((acc, t) => {
-      if (t.type === 'income') {
-        acc.income += t.amount;
-      } else {
-        acc.expense += t.amount;
+      if (cardsError) {
+        setLoading(false);
+        return;
       }
-      return acc;
-    }, { income: 0, expense: 0 });
 
-  const incomeExpenseData = [
-    { name: 'Entradas', value: monthlyIncomeExpense.income },
-    { name: 'Saídas', value: monthlyIncomeExpense.expense }
-  ];
+      setCards(cardsData as Card[]);
 
-  // Preparar dados para o gráfico de linha do saldo acumulado
-  const balanceHistory = transactions
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .reduce((acc: { date: string; balance: number }[], t) => {
-      const lastBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0;
-      const newBalance = t.type === 'income' 
-        ? lastBalance + t.amount 
-        : lastBalance - t.amount;
-      
-      acc.push({
-        date: new Date(t.date).toLocaleDateString('pt-BR'),
-        balance: newBalance
+      // Buscar categorias
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('categories')
+        .select('*');
+
+      if (categoriesError) {
+        setLoading(false);
+        return;
+      }
+
+      const categoriesMap = (categoriesData || []).reduce((acc, category) => {
+        acc[category.id] = category;
+        return acc;
+      }, {} as Record<string, Category>);
+
+      setCategories(categoriesMap);
+
+      // Buscar transações
+      const { data: transactionsData, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (error) {
+        setLoading(false);
+        return;
+      }
+
+      setTransactions(transactionsData as Transaction[]);
+
+      // Calcular saldos
+      let income = 0;
+      let expenses = 0;
+      ;(transactionsData as Transaction[]).forEach((transaction) => {
+        if (transaction.type === 'income') {
+          income += transaction.amount;
+        } else {
+          expenses += transaction.amount;
+        }
       });
-      
-      return acc;
-    }, []);
 
-  const COLORS = ['#22c55e', '#ef4444'];
+      setTotalIncome(income);
+      setTotalExpenses(expenses);
+      setBalance(income - expenses);
+
+      // Agrupar despesas por cartão
+      const cardExpenses = (transactionsData as Transaction[])
+        .filter((t) => t.type === 'expense' && t.card_id)
+        .reduce((acc: Record<string, number>, curr) => {
+          const cardId = curr.card_id!;
+          acc[cardId] = (acc[cardId] || 0) + curr.amount;
+          return acc;
+        }, {});
+
+      const cardExpensesArray = Object.entries(cardExpenses)
+        .map(([cardId, amount]) => {
+          const card = cardsData?.find(c => c.id === cardId);
+          return {
+            name: card ? `${card.bank} (${card.last_digits})` : 'Cartão não encontrado',
+            amount
+          };
+        })
+        .filter(expense => expense.name !== 'Cartão não encontrado'); // Remove cartões não encontrados
+
+      setExpensesByCard(cardExpensesArray);
+
+      // Calcular saldo diário
+      const dailyBalancesMap = (transactionsData as Transaction[])
+        .reduce((acc: Record<string, { income: number; expense: number }>, curr) => {
+          const date = new Date(curr.date).toLocaleDateString('pt-BR');
+          if (!acc[date]) {
+            acc[date] = { income: 0, expense: 0 };
+          }
+          if (curr.type === 'income') {
+            acc[date].income += curr.amount;
+          } else {
+            acc[date].expense += curr.amount;
+          }
+          return acc;
+        }, {});
+
+      const dailyBalancesArray = Object.entries(dailyBalancesMap)
+        .map(([date, { income, expense }]) => ({
+          date,
+          income,
+          expense,
+          balance: income - expense
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      setDailyBalances(dailyBalancesArray);
+
+      // Agrupar despesas por categoria
+      const categoryExp = (transactionsData as Transaction[])
+        .filter((t) => t.type === 'expense' && t.category_id)
+        .reduce((acc: Record<string, number>, curr) => {
+          const category = curr.category_id!;
+          acc[category] = (acc[category] || 0) + curr.amount;
+          return acc;
+        }, {});
+
+      const totalExpenses = Object.values(categoryExp).reduce((sum, amount) => sum + amount, 0);
+      const categoryExpensesArray = Object.entries(categoryExp).map(([categoryId, amount]) => ({
+        category: categoriesMap[categoryId]?.name || 'Sem categoria',
+        amount,
+        percentage: (amount / totalExpenses) * 100
+      }));
+
+      setCategoryExpenses(categoryExpensesArray);
+
+      // Agrupar despesas parceladas
+      const installmentExpenses = transactions
+        .filter((t) => t.type === 'expense' && t.installments)
+        .map((t) => ({
+          id: t.id,
+          description: t.description,
+          amount: t.amount * (t.installments?.total || 1),
+          remainingAmount: t.amount * ((t.installments?.total || 1) - (t.installments?.current || 0)),
+          installments: {
+            total: t.installments?.total || 1,
+            current: t.installments?.current || 1
+          },
+          remainingInstallments: (t.installments?.total || 1) - (t.installments?.current || 1)
+        }));
+
+      setInstallmentExpenses(installmentExpenses);
+
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">Entradas e Saídas</h3>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  const newDate = new Date(selectedMonth);
-                  newDate.setMonth(newDate.getMonth() - 1);
-                  setSelectedMonth(newDate);
-                }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              </button>
-              <span className="font-medium">
-                {selectedMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-              </span>
-              <button
-                onClick={() => {
-                  const newDate = new Date(selectedMonth);
-                  newDate.setMonth(newDate.getMonth() + 1);
-                  setSelectedMonth(newDate);
-                }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <h3 className="text-lg font-medium text-gray-900">Saldo Total</h3>
+          <p className="mt-2 text-3xl font-bold text-gray-900">{formatCurrency(balance)}</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-medium text-gray-900">Total de Receitas</h3>
+          <p className="mt-2 text-3xl font-bold text-green-600">{formatCurrency(totalIncome)}</p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-medium text-gray-900">Total de Despesas</h3>
+          <p className="mt-2 text-3xl font-bold text-red-600">{formatCurrency(totalExpenses)}</p>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow">
+        <div className="flex space-x-4 mb-6">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 rounded-md ${
+              activeTab === 'overview'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Visão Geral
+          </button>
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`px-4 py-2 rounded-md ${
+              activeTab === 'categories'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Categorias
+          </button>
+          <button
+            onClick={() => setActiveTab('expenses')}
+            className={`px-4 py-2 rounded-md ${
+              activeTab === 'expenses'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Despesas
+          </button>
+        </div>
+
+        {activeTab === 'overview' && (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Gastos por Cartão</h3>
+                <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={incomeExpenseData}
+                  data={expensesByCard}
+                      dataKey="amount"
+                  nameKey="name"
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {incomeExpenseData.map((entry, index) => (
+                      outerRadius={80}
+                      fill="#8884d8"
+                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    >
+                      {expensesByCard.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Gastos por Categoria</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={categoryExpenses}
+                      dataKey="amount"
+                      nameKey="category"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      fill="#8884d8"
+                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    >
+                      {categoryExpenses.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => `R$ ${value.toFixed(2)}`} />
+                    <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4">Evolução do Saldo</h3>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={balanceHistory}>
+            <div>
+              <h3 className="text-lg font-semibold">Entradas e Saídas</h3>
+              <div className="flex items-center gap-2 mb-4">
+                <button
+                  onClick={() => {
+                    const newDate = new Date(selectedMonth);
+                    newDate.setMonth(newDate.getMonth() - 1);
+                    setSelectedMonth(newDate);
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                <span className="font-medium">
+                  {selectedMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                </span>
+                <button
+                  onClick={() => {
+                    const newDate = new Date(selectedMonth);
+                    newDate.setMonth(newDate.getMonth() + 1);
+                    setSelectedMonth(newDate);
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-md font-medium text-gray-900 mb-2">Entradas e Saídas do Mês</h4>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { 
+                            name: 'Entradas', 
+                            value: transactions
+                              .filter(t => {
+                                const date = new Date(t.date);
+                                return date.getMonth() === selectedMonth.getMonth() && 
+                                       date.getFullYear() === selectedMonth.getFullYear() &&
+                                       t.type === 'income';
+                              })
+                              .reduce((sum, t) => sum + t.amount, 0)
+                          },
+                          { 
+                            name: 'Saídas', 
+                            value: transactions
+                              .filter(t => {
+                                const date = new Date(t.date);
+                                return date.getMonth() === selectedMonth.getMonth() && 
+                                       date.getFullYear() === selectedMonth.getFullYear() &&
+                                       t.type === 'expense';
+                              })
+                              .reduce((sum, t) => sum + t.amount, 0)
+                          }
+                        ]}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        fill="#8884d8"
+                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                      >
+                        <Cell fill="#10B981" />
+                        <Cell fill="#EF4444" />
+                      </Pie>
+                      <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div>
+                  <h4 className="text-md font-medium text-gray-900 mb-2">Saldo Acumulado</h4>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart
+                      data={transactions
+                        .filter(t => {
+                          const date = new Date(t.date);
+                          return date.getMonth() === selectedMonth.getMonth() && 
+                                 date.getFullYear() === selectedMonth.getFullYear();
+                        })
+                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                        .reduce((acc: { date: string; balance: number }[], t) => {
+                          const lastBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0;
+                          const newBalance = t.type === 'income' 
+                            ? lastBalance + t.amount 
+                            : lastBalance - t.amount;
+                          
+                          acc.push({
+                            date: new Date(t.date).toLocaleDateString('pt-BR'),
+                            balance: newBalance
+                          });
+                          
+                          return acc;
+                        }, [])}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis domain={['auto', 'auto']} />
-                <Tooltip formatter={(value: number) => `R$ ${value.toFixed(2)}`} />
-                <Line 
-                  type="monotone" 
-                  dataKey="balance" 
-                  stroke="#8884d8" 
-                  strokeWidth={2}
-                  dot={{ r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-                <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
-              </LineChart>
+                      <XAxis dataKey="date" />
+                <YAxis />
+                      <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                      <Line type="monotone" dataKey="balance" stroke="#3B82F6" name="Saldo" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Histórico de Transações</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Data
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Descrição
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Categoria
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Tipo
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Valor
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {transactions.map((transaction) => (
+                      <tr key={transaction.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {new Date(transaction.date).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {transaction.description}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {transaction.category_id && categories[transaction.category_id]?.name || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {transaction.type === 'income' ? 'Receita' : 'Despesa'}
+                        </td>
+                        <td
+                          className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
+                            transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                          }`}
+                        >
+                          {formatCurrency(transaction.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'categories' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Gastos por Categoria</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={categoryExpenses}
+                    dataKey="amount"
+                    nameKey="category"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    fill="#8884d8"
+                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                  >
+                    {categoryExpenses.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                <Legend />
+                </PieChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-gray-900">Saldo Total</h3>
-          <p className="mt-2 text-3xl font-bold text-gray-900">
-            R$ {balance.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-gray-900">Total de Receitas</h3>
-          <p className="mt-2 text-3xl font-bold text-green-600">
-            R$ {totalIncome.toFixed(2)}
-          </p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-gray-900">Total de Despesas</h3>
-          <p className="mt-2 text-3xl font-bold text-red-600">
-            R$ {totalExpenses.toFixed(2)}
-          </p>
-        </div>
-      </div>
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Detalhes por Categoria</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Categoria
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Valor
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Porcentagem
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {categoryExpenses.map((expense) => (
+                      <tr key={expense.category}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {expense.category}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatCurrency(expense.amount)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {((expense.amount / totalExpenses) * 100).toFixed(1)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
-      <div className="bg-white p-6 rounded-lg shadow">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Histórico de Transações</h2>
-          <Receipt className="h-5 w-5 text-gray-400" />
+        {activeTab === 'expenses' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Despesas à Vista</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Data
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Descrição
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Categoria
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Valor
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {transactions
+                      .filter(t => t.type === 'expense' && (!t.installments || t.installments.total === 1))
+                      .map((transaction) => (
+                        <tr key={transaction.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(transaction.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {transaction.description}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {transaction.category_id && categories[transaction.category_id]?.name || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                            {formatCurrency(transaction.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Despesas Parceladas</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Descrição
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Valor Total
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Valor Restante
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Parcelas
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Parcelas Restantes
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {installmentExpenses.map((expense) => (
+                      <tr key={expense.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {expense.description}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                          {formatCurrency(expense.amount)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                          {formatCurrency(expense.remainingAmount)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {expense.installments.total}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {expense.remainingInstallments}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
         </div>
-        {loading ? (
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="text-center text-gray-500">
-            Nenhuma transação registrada
-          </div>
-        ) : (
-          <div className="overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Data
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Descrição
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Valor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tipo
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {transactions.map((transaction) => (
-                  <tr key={transaction.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(transaction.date).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.description}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`font-medium ${
-                        transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {transaction.type === 'income' ? '+' : '-'} R$ {transaction.amount.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {transaction.type === 'income' ? 'Receita' : 'Despesa'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
     </div>

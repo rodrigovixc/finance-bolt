@@ -13,13 +13,15 @@ export function Auth() {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
       });
 
       if (error) throw error;
-      alert('Verifique seu email para confirmar o cadastro!');
+      if (data.user) {
+        alert('Verifique seu email para confirmar o cadastro!');
+      }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Erro ao criar conta');
     } finally {
@@ -33,12 +35,13 @@ export function Auth() {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) throw error;
+      if (!data.user) throw new Error('Usuário não encontrado');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Erro ao fazer login');
     } finally {
@@ -73,6 +76,7 @@ export function Auth() {
                 name="email"
                 type="email"
                 required
+                data-testid="email-input"
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Email"
                 value={email}
@@ -88,6 +92,7 @@ export function Auth() {
                 name="password"
                 type="password"
                 required
+                data-testid="password-input"
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Senha"
                 value={password}
@@ -108,6 +113,7 @@ export function Auth() {
             <button
               type="submit"
               disabled={loading}
+              data-testid="login-button"
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {loading ? 'Carregando...' : 'Entrar'}
@@ -116,6 +122,7 @@ export function Auth() {
               type="button"
               onClick={handleSignUp}
               disabled={loading}
+              data-testid="signup-button"
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-blue-600 bg-white border-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {loading ? 'Carregando...' : 'Cadastrar'}
@@ -126,3 +133,6 @@ export function Auth() {
     </div>
   );
 } 
+ 
+ 
+ 

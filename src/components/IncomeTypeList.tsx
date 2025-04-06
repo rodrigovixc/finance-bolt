@@ -43,3 +43,6 @@ export function IncomeTypeList({ incomeTypes, onDelete }: IncomeTypeListProps) {
     </div>
   );
 } 
+ 
+ 
+ 

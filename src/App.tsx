@@ -9,31 +9,50 @@ import { IncomeTypeForm } from './components/IncomeTypeForm';
 import { IncomeTypeList } from './components/IncomeTypeList';
 import { Auth } from './components/Auth';
 import { User } from '@supabase/supabase-js';
-import { CreditCard, Receipt, LayoutDashboard, Wallet, DollarSign } from 'lucide-react';
+import { CreditCard, Receipt, LayoutDashboard, Wallet, DollarSign, Tag } from 'lucide-react';
+import { UserMenu } from './components/UserMenu';
+import { CategoryForm } from './components/CategoryForm';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'cards' | 'transactions' | 'income'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'cards' | 'income-types' | 'transactions' | 'categories'>('dashboard');
   const [cards, setCards] = useState<Card[]>([]);
   const [incomeTypes, setIncomeTypes] = useState<IncomeType[]>([]);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('Verificando sessão...');
     // Verificar sessão atual
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Sessão encontrada:', session);
       setUser(session?.user ?? null);
+      setLoading(false);
+    }).catch(error => {
+      console.error('Erro ao verificar sessão:', error);
       setLoading(false);
     });
 
     // Ouvir mudanças na autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Mudança no estado de autenticação:', event, session);
       setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      console.log('Usuário autenticado, carregando dados...', user);
+      loadCards();
+      loadIncomeTypes();
+    } else {
+      console.log('Usuário não autenticado');
+    }
+  }, [user]);
+
   const loadCards = async () => {
+    console.log('Carregando cartões...');
     const { data, error } = await supabase
       .from('cards')
       .select('*')
@@ -41,13 +60,17 @@ function App() {
 
     if (error) {
       console.error('Erro ao carregar cartões:', error);
+      console.error('Código do erro:', error.code);
+      console.error('Mensagem do erro:', error.message);
       return;
     }
 
+    console.log('Cartões carregados:', data);
     setCards(data || []);
   };
 
   const loadIncomeTypes = async () => {
+    console.log('Carregando tipos de entrada...');
     const { data, error } = await supabase
       .from('income_types')
       .select('*')
@@ -55,9 +78,12 @@ function App() {
 
     if (error) {
       console.error('Erro ao carregar tipos de entrada:', error);
+      console.error('Código do erro:', error.code);
+      console.error('Mensagem do erro:', error.message);
       return;
     }
 
+    console.log('Tipos de entrada carregados:', data);
     setIncomeTypes(data || []);
   };
 
@@ -88,24 +114,17 @@ function App() {
               <span className="ml-2 text-xl font-bold text-gray-900">Bolt Finance</span>
             </div>
             <div className="flex items-center">
-              <span className="text-sm text-gray-500 mr-4">
-                {user.email}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-              >
-                Sair
-              </button>
+              <UserMenu user={user} />
             </div>
           </div>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex space-x-4 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6">
           <button
             onClick={() => setActiveTab('dashboard')}
+            data-testid="dashboard-tab"
             className={`flex items-center px-4 py-2 rounded-lg ${
               activeTab === 'dashboard'
                 ? 'bg-blue-600 text-white'
@@ -116,18 +135,8 @@ function App() {
             Dashboard
           </button>
           <button
-            onClick={() => setActiveTab('cards')}
-            className={`flex items-center px-4 py-2 rounded-lg ${
-              activeTab === 'cards'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <Wallet className="w-5 h-5 mr-2" />
-            Cartões
-          </button>
-          <button
             onClick={() => setActiveTab('transactions')}
+            data-testid="transactions-tab"
             className={`flex items-center px-4 py-2 rounded-lg ${
               activeTab === 'transactions'
                 ? 'bg-blue-600 text-white'
@@ -138,21 +147,46 @@ function App() {
             Transações
           </button>
           <button
-            onClick={() => setActiveTab('income')}
+            onClick={() => setActiveTab('cards')}
+            data-testid="cards-tab"
             className={`flex items-center px-4 py-2 rounded-lg ${
-              activeTab === 'income'
+              activeTab === 'cards'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Wallet className="w-5 h-5 mr-2" />
+            Cartões
+          </button>
+          <button
+            onClick={() => setActiveTab('income-types')}
+            data-testid="income-types-tab"
+            className={`flex items-center px-4 py-2 rounded-lg ${
+              activeTab === 'income-types'
                 ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-600 hover:bg-gray-50'
             }`}
           >
             <DollarSign className="w-5 h-5 mr-2" />
-            Entradas
+            Tipos de Receita
+          </button>
+          <button
+            onClick={() => setActiveTab('categories')}
+            data-testid="categories-tab"
+            className={`flex items-center px-4 py-2 rounded-lg ${
+              activeTab === 'categories'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Tag className="w-5 h-5 mr-2" />
+            Categorias
           </button>
         </div>
 
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            <Dashboard cards={cards} />
+            <Dashboard />
           </div>
         )}
 
@@ -166,19 +200,25 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'transactions' && (
-          <div className="bg-white p-6 rounded-lg shadow">
-            <TransactionForm cards={cards} incomeTypes={incomeTypes} onSubmit={loadCards} />
-          </div>
-        )}
-
-        {activeTab === 'income' && (
+        {activeTab === 'income-types' && (
           <div className="space-y-6">
             <IncomeTypeForm onSubmit={loadIncomeTypes} />
             <div className="mt-8">
               <h2 className="text-xl font-semibold mb-4">Tipos de Entrada</h2>
               <IncomeTypeList incomeTypes={incomeTypes} onDelete={loadIncomeTypes} />
             </div>
+          </div>
+        )}
+
+        {activeTab === 'categories' && (
+          <div className="space-y-6">
+            <CategoryForm />
+          </div>
+        )}
+
+        {activeTab === 'transactions' && (
+          <div className="bg-white p-6 rounded-lg shadow">
+            <TransactionForm cards={cards} incomeTypes={incomeTypes} onSubmit={loadCards} />
           </div>
         )}
       </div>
