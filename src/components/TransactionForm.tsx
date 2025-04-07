@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Card, IncomeType, Category, Transaction } from '../types';
+import { Card, IncomeType, Category } from '../types';
 import { supabase } from '../lib/supabase';
-import { Receipt, CreditCard, DollarSign, Calendar, Type, Plus, X, FileText, Tag, Repeat } from 'lucide-react';
-import { formatCurrency } from '../utils';
+import {
+  Receipt,
+  CreditCard,
+  DollarSign,
+  Calendar,
+  Tag,
+  FileText,
+  Repeat
+} from 'lucide-react';
 
 export function TransactionForm() {
   const [description, setDescription] = useState('');
@@ -46,6 +53,16 @@ export function TransactionForm() {
     setSuccess(false);
 
     try {
+      // Obtém o usuário autenticado
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Prepara as transações para inserção
       const transactionsToCreate = [];
       const baseDate = new Date(date);
       const baseAmount = parseFloat(amount) / totalInstallments;
@@ -69,6 +86,7 @@ export function TransactionForm() {
             total: number;
             current: number;
           };
+          user_id: string;
         } = {
           description: `${description} (${i + 1}/${totalInstallments})`,
           amount: baseAmount,
@@ -82,7 +100,8 @@ export function TransactionForm() {
           installments: {
             total: totalInstallments,
             current: i + 1
-          }
+          },
+          user_id: user.id // Adiciona o user_id para atender à RLS
         };
 
         // Adiciona card_id apenas se for despesa e o campo estiver preenchido
@@ -311,9 +330,9 @@ export function TransactionForm() {
                   className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">Selecione um tipo</option>
-                  {incomeTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
+                  {incomeTypes.map((incomeType) => (
+                    <option key={incomeType.id} value={incomeType.id}>
+                      {incomeType.name}
                     </option>
                   ))}
                 </select>
@@ -405,5 +424,4 @@ export function TransactionForm() {
       </form>
     </div>
   );
-} 
- 
+}

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Receipt, CreditCard } from 'lucide-react';
+import { Receipt } from 'lucide-react';
 import { Card } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface ExpenseFormProps {
   cards: Card[];
@@ -11,6 +12,7 @@ interface ExpenseFormProps {
     description: string;
     totalInstallments: number;
     remainingInstallments: number;
+    user_id: string;
   }) => void;
 }
 
@@ -23,28 +25,54 @@ export function ExpenseForm({ cards, onSubmit }: ExpenseFormProps) {
     totalInstallments: '1',
     remainingInstallments: '1',
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
-      ...formData,
-      amount: Number(formData.amount),
-      totalInstallments: Number(formData.totalInstallments),
-      remainingInstallments: Number(formData.remainingInstallments),
-    });
-    setFormData({
-      cardId: '',
-      amount: '',
-      date: '',
-      description: '',
-      totalInstallments: '1',
-      remainingInstallments: '1',
-    });
+    setLoading(true);
+    setError(null);
+    try {
+      // Busca o usuário autenticado
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Chama o callback passando também o user_id
+      onSubmit({
+        cardId: formData.cardId,
+        amount: Number(formData.amount),
+        date: formData.date,
+        description: formData.description,
+        totalInstallments: Number(formData.totalInstallments),
+        remainingInstallments: Number(formData.remainingInstallments),
+        user_id: user.id,
+      });
+
+      // Reseta o formulário
+      setFormData({
+        cardId: '',
+        amount: '',
+        date: '',
+        description: '',
+        totalInstallments: '1',
+        remainingInstallments: '1',
+      });
+    } catch (err) {
+      console.error('Erro ao registrar gasto:', err);
+      setError('Erro ao registrar gasto. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   return (
@@ -64,7 +92,7 @@ export function ExpenseForm({ cards, onSubmit }: ExpenseFormProps) {
           required
         >
           <option value="">Selecione um cartão</option>
-          {cards.map(card => (
+          {cards.map((card) => (
             <option key={card.id} value={card.id}>
               {card.bank} (**** {card.lastDigits})
             </option>
@@ -139,11 +167,22 @@ export function ExpenseForm({ cards, onSubmit }: ExpenseFormProps) {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-md bg-red-50 p-4">
+          <div className="flex">
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">{error}</h3>
+            </div>
+          </div>
+        </div>
+      )}
+
       <button
         type="submit"
+        disabled={loading}
         className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
       >
-        Registrar Gasto
+        {loading ? 'Registrando...' : 'Registrar Gasto'}
       </button>
     </form>
   );

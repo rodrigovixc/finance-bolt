@@ -16,16 +16,18 @@ export function IncomeTypeForm({ onSubmit }: IncomeTypeFormProps) {
     e.preventDefault();
     try {
       setIsLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
       
-      if (!user) {
+      // Obtém o usuário autenticado
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
         throw new Error('Usuário não autenticado');
       }
 
+      // Dados para inserção, incluindo o user_id para atender à política RLS
       const incomeTypeData = {
         name,
         description,
-        user_id: user.id
+        user_id: user.id,
       };
 
       const { data, error } = await supabase
@@ -59,9 +61,7 @@ export function IncomeTypeForm({ onSubmit }: IncomeTypeFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
-          Nome
-        </label>
+        <label className="block text-sm font-medium text-gray-700">Nome</label>
         <input
           type="text"
           value={name}
@@ -73,9 +73,7 @@ export function IncomeTypeForm({ onSubmit }: IncomeTypeFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
-          Descrição (opcional)
-        </label>
+        <label className="block text-sm font-medium text-gray-700">Descrição (opcional)</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -84,6 +82,12 @@ export function IncomeTypeForm({ onSubmit }: IncomeTypeFormProps) {
           rows={3}
         />
       </div>
+
+      {error && (
+        <div className="rounded-md bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-800">{error}</p>
+        </div>
+      )}
 
       <button
         type="submit"
@@ -94,5 +98,4 @@ export function IncomeTypeForm({ onSubmit }: IncomeTypeFormProps) {
       </button>
     </form>
   );
-} 
- 
+}

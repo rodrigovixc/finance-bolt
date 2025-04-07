@@ -15,14 +15,18 @@ export function CategoryForm() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  useEffect(() => {
-    fetchCategories();
-  }, []);
-
+  // Função para buscar as categorias do usuário autenticado
   const fetchCategories = async () => {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Usuário não autenticado:', userError);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('categories')
       .select('*')
+      .eq('user_id', user.id)
       .order('name');
 
     if (error) {
@@ -33,6 +37,10 @@ export function CategoryForm() {
     setCategories(data || []);
   };
 
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -40,18 +48,24 @@ export function CategoryForm() {
     setSuccess(false);
 
     try {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       if (editingCategory) {
+        // Atualiza somente se o category pertencer ao usuário
         const { error } = await supabase
           .from('categories')
           .update({ name, description, color, icon })
-          .eq('id', editingCategory.id);
-
+          .eq('id', editingCategory.id)
+          .eq('user_id', user.id);
         if (error) throw error;
       } else {
+        // Insere nova categoria, incluindo o user_id para satisfazer a política de RLS
         const { error } = await supabase
           .from('categories')
-          .insert([{ name, description, color, icon }]);
-
+          .insert([{ name, description, color, icon, user_id: user.id }]);
         if (error) throw error;
       }
 
@@ -69,16 +83,21 @@ export function CategoryForm() {
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta categoria?')) return;
 
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Usuário não autenticado:', userError);
+      return;
+    }
+
     const { error } = await supabase
       .from('categories')
       .delete()
-      .eq('id', id);
-
+      .eq('id', id)
+      .eq('user_id', user.id);
     if (error) {
       console.error('Erro ao excluir categoria:', error);
       return;
     }
-
     fetchCategories();
   };
 
@@ -127,7 +146,7 @@ export function CategoryForm() {
           <h3 className="text-lg font-medium text-gray-900 mb-6">
             {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
           </h3>
-          
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 gap-6">
               <div>
@@ -296,4 +315,4 @@ export function CategoryForm() {
       </div>
     </div>
   );
-} 
+}

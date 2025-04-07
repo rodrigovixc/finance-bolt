@@ -9,13 +9,27 @@ interface IncomeTypeListProps {
 
 export function IncomeTypeList({ incomeTypes, onDelete }: IncomeTypeListProps) {
   const handleDelete = async (id: string) => {
+    // Obter o usuário autenticado
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Usuário não autenticado');
+      return;
+    }
+
+    // Deletar somente se o registro pertencer ao usuário autenticado
     const { error } = await supabase
       .from('income_types')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (!error) {
       onDelete(id);
+    } else {
+      console.error('Erro ao excluir tipo de entrada:', error);
     }
   };
 
@@ -42,7 +56,4 @@ export function IncomeTypeList({ incomeTypes, onDelete }: IncomeTypeListProps) {
       ))}
     </div>
   );
-} 
- 
- 
- 
+}

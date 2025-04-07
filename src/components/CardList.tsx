@@ -9,13 +9,27 @@ interface CardListProps {
 
 export function CardList({ cards, onDelete }: CardListProps) {
   const handleDelete = async (id: string) => {
+    // Obter o usuário autenticado
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Usuário não autenticado');
+      return;
+    }
+
+    // Deletar apenas se o cartão pertencer ao usuário autenticado
     const { error } = await supabase
       .from('cards')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (!error) {
       onDelete(id);
+    } else {
+      console.error('Erro ao excluir cartão:', error);
     }
   };
 
@@ -43,7 +57,4 @@ export function CardList({ cards, onDelete }: CardListProps) {
       ))}
     </div>
   );
-} 
- 
- 
- 
+}

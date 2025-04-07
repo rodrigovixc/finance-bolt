@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react';
 import { Card, Transaction, IncomeType, Category } from '../types';
 import { supabase } from '../lib/supabase';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, ReferenceLine, ComposedChart, Area, Legend } from 'recharts';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  ReferenceLine,
+  ComposedChart,
+  Area,
+  Legend
+} from 'recharts';
 import { Receipt, CreditCard, Calendar, Tag } from 'lucide-react';
 import { formatCurrency } from '../utils';
-
-interface ExpenseByCard {
-  cardId: string;
-  amount: number;
-  month: string;
-}
 
 interface DailyBalance {
   date: string;
@@ -62,62 +73,66 @@ export function Dashboard() {
     try {
       setLoading(true);
 
-      // Buscar cartões primeiro
+      // Obtém o usuário autenticado
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar cartões filtrados pelo usuário
       const { data: cardsData, error: cardsError } = await supabase
         .from('cards')
-        .select('*');
-
+        .select('*')
+        .eq('user_id', user.id);
       if (cardsError) {
         setLoading(false);
         return;
       }
-
       setCards(cardsData as Card[]);
 
-      // Buscar categorias
+      // Buscar categorias filtradas pelo usuário
       const { data: categoriesData, error: categoriesError } = await supabase
         .from('categories')
-        .select('*');
-
+        .select('*')
+        .eq('user_id', user.id);
       if (categoriesError) {
         setLoading(false);
         return;
       }
-
       const categoriesMap = (categoriesData || []).reduce((acc, category) => {
         acc[category.id] = category;
         return acc;
       }, {} as Record<string, Category>);
-
       setCategories(categoriesMap);
 
-      // Buscar transações
+      // Buscar transações filtradas pelo usuário
       const { data: transactionsData, error } = await supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', user.id)
         .order('date', { ascending: false });
-
       if (error) {
         setLoading(false);
         return;
       }
-
       setTransactions(transactionsData as Transaction[]);
 
-      // Calcular saldos
+      // Calcular total de receitas e despesas
       let income = 0;
-      let expenses = 0;
-      ;(transactionsData as Transaction[]).forEach((transaction) => {
+      let expenseSum = 0;
+      (transactionsData as Transaction[]).forEach((transaction) => {
         if (transaction.type === 'income') {
           income += transaction.amount;
         } else {
-          expenses += transaction.amount;
+          expenseSum += transaction.amount;
         }
       });
-
       setTotalIncome(income);
-      setTotalExpenses(expenses);
-      setBalance(income - expenses);
+      setTotalExpenses(expenseSum);
+      setBalance(income - expenseSum);
 
       // Agrupar despesas por cartão
       const cardExpenses = (transactionsData as Transaction[])
@@ -130,30 +145,31 @@ export function Dashboard() {
 
       const cardExpensesArray = Object.entries(cardExpenses)
         .map(([cardId, amount]) => {
-          const card = cardsData?.find(c => c.id === cardId);
+          const card = cardsData?.find((c) => c.id === cardId);
           return {
             name: card ? `${card.bank} (${card.last_digits})` : 'Cartão não encontrado',
             amount
           };
         })
-        .filter(expense => expense.name !== 'Cartão não encontrado'); // Remove cartões não encontrados
-
+        .filter((expense) => expense.name !== 'Cartão não encontrado');
       setExpensesByCard(cardExpensesArray);
 
       // Calcular saldo diário
-      const dailyBalancesMap = (transactionsData as Transaction[])
-        .reduce((acc: Record<string, { income: number; expense: number }>, curr) => {
-          const date = new Date(curr.date).toLocaleDateString('pt-BR');
-          if (!acc[date]) {
-            acc[date] = { income: 0, expense: 0 };
+      const dailyBalancesMap = (transactionsData as Transaction[]).reduce(
+        (acc: Record<string, { income: number; expense: number }>, curr) => {
+          const dateStr = new Date(curr.date).toLocaleDateString('pt-BR');
+          if (!acc[dateStr]) {
+            acc[dateStr] = { income: 0, expense: 0 };
           }
           if (curr.type === 'income') {
-            acc[date].income += curr.amount;
+            acc[dateStr].income += curr.amount;
           } else {
-            acc[date].expense += curr.amount;
+            acc[dateStr].expense += curr.amount;
           }
           return acc;
-        }, {});
+        },
+        {}
+      );
 
       const dailyBalancesArray = Object.entries(dailyBalancesMap)
         .map(([date, { income, expense }]) => ({
@@ -163,29 +179,26 @@ export function Dashboard() {
           balance: income - expense
         }))
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
       setDailyBalances(dailyBalancesArray);
 
       // Agrupar despesas por categoria
       const categoryExp = (transactionsData as Transaction[])
         .filter((t) => t.type === 'expense' && t.category_id)
         .reduce((acc: Record<string, number>, curr) => {
-          const category = curr.category_id!;
-          acc[category] = (acc[category] || 0) + curr.amount;
+          const catId = curr.category_id!;
+          acc[catId] = (acc[catId] || 0) + curr.amount;
           return acc;
         }, {});
-
-      const totalExpenses = Object.values(categoryExp).reduce((sum, amount) => sum + amount, 0);
-      const categoryExpensesArray = Object.entries(categoryExp).map(([categoryId, amount]) => ({
-        category: categoriesMap[categoryId]?.name || 'Sem categoria',
+      const totalCatExpenses = Object.values(categoryExp).reduce((sum, amt) => sum + amt, 0);
+      const categoryExpensesArray = Object.entries(categoryExp).map(([catId, amount]) => ({
+        category: categoriesMap[catId]?.name || 'Sem categoria',
         amount,
-        percentage: (amount / totalExpenses) * 100
+        percentage: (amount / totalCatExpenses) * 100
       }));
-
       setCategoryExpenses(categoryExpensesArray);
 
       // Agrupar despesas parceladas
-      const installmentExpenses = transactions
+      const installmentExpenses = (transactionsData as Transaction[])
         .filter((t) => t.type === 'expense' && t.installments)
         .map((t) => ({
           id: t.id,
@@ -198,7 +211,6 @@ export function Dashboard() {
           },
           remainingInstallments: (t.installments?.total || 1) - (t.installments?.current || 1)
         }));
-
       setInstallmentExpenses(installmentExpenses);
 
       setLoading(false);
@@ -217,6 +229,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Resumo dos saldos */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-medium text-gray-900">Saldo Total</h3>
@@ -233,6 +246,7 @@ export function Dashboard() {
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow">
+        {/* Abas para diferentes visualizações */}
         <div className="flex space-x-4 mb-6">
           <button
             onClick={() => setActiveTab('overview')}
@@ -267,18 +281,19 @@ export function Dashboard() {
         </div>
 
         {activeTab === 'overview' && (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Gráfico de gastos por cartão */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Gastos por Cartão</h3>
                 <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={expensesByCard}
+                  <PieChart>
+                    <Pie
+                      data={expensesByCard}
                       dataKey="amount"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
                       outerRadius={80}
                       fill="#8884d8"
                       label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
@@ -293,6 +308,7 @@ export function Dashboard() {
                 </ResponsiveContainer>
               </div>
 
+              {/* Gráfico de gastos por categoria */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Gastos por Categoria</h3>
                 <ResponsiveContainer width="100%" height={300}>
@@ -308,15 +324,15 @@ export function Dashboard() {
                       label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                     >
                       {categoryExpenses.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
                     <Tooltip formatter={(value) => formatCurrency(value as number)} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
 
             <div>
               <h3 className="text-lg font-semibold">Entradas e Saídas</h3>
@@ -330,7 +346,11 @@ export function Dashboard() {
                   className="p-1 hover:bg-gray-100 rounded"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                    <path
+                      fillRule="evenodd"
+                      d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                 </button>
                 <span className="font-medium">
@@ -345,37 +365,46 @@ export function Dashboard() {
                   className="p-1 hover:bg-gray-100 rounded"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                    <path
+                      fillRule="evenodd"
+                      d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                 </button>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Gráfico de entradas e saídas do mês */}
                 <div>
                   <h4 className="text-md font-medium text-gray-900 mb-2">Entradas e Saídas do Mês</h4>
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
                       <Pie
                         data={[
-                          { 
-                            name: 'Entradas', 
+                          {
+                            name: 'Entradas',
                             value: transactions
-                              .filter(t => {
-                                const date = new Date(t.date);
-                                return date.getMonth() === selectedMonth.getMonth() && 
-                                       date.getFullYear() === selectedMonth.getFullYear() &&
-                                       t.type === 'income';
+                              .filter((t) => {
+                                const dt = new Date(t.date);
+                                return (
+                                  dt.getMonth() === selectedMonth.getMonth() &&
+                                  dt.getFullYear() === selectedMonth.getFullYear() &&
+                                  t.type === 'income'
+                                );
                               })
                               .reduce((sum, t) => sum + t.amount, 0)
                           },
-                          { 
-                            name: 'Saídas', 
+                          {
+                            name: 'Saídas',
                             value: transactions
-                              .filter(t => {
-                                const date = new Date(t.date);
-                                return date.getMonth() === selectedMonth.getMonth() && 
-                                       date.getFullYear() === selectedMonth.getFullYear() &&
-                                       t.type === 'expense';
+                              .filter((t) => {
+                                const dt = new Date(t.date);
+                                return (
+                                  dt.getMonth() === selectedMonth.getMonth() &&
+                                  dt.getFullYear() === selectedMonth.getFullYear() &&
+                                  t.type === 'expense'
+                                );
                               })
                               .reduce((sum, t) => sum + t.amount, 0)
                           }
@@ -397,35 +426,34 @@ export function Dashboard() {
                   </ResponsiveContainer>
                 </div>
 
+                {/* Gráfico de saldo acumulado */}
                 <div>
                   <h4 className="text-md font-medium text-gray-900 mb-2">Saldo Acumulado</h4>
                   <ResponsiveContainer width="100%" height={200}>
                     <LineChart
                       data={transactions
-                        .filter(t => {
-                          const date = new Date(t.date);
-                          return date.getMonth() === selectedMonth.getMonth() && 
-                                 date.getFullYear() === selectedMonth.getFullYear();
+                        .filter((t) => {
+                          const dt = new Date(t.date);
+                          return (
+                            dt.getMonth() === selectedMonth.getMonth() &&
+                            dt.getFullYear() === selectedMonth.getFullYear()
+                          );
                         })
                         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                         .reduce((acc: { date: string; balance: number }[], t) => {
                           const lastBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0;
-                          const newBalance = t.type === 'income' 
-                            ? lastBalance + t.amount 
-                            : lastBalance - t.amount;
-                          
+                          const newBalance = t.type === 'income' ? lastBalance + t.amount : lastBalance - t.amount;
                           acc.push({
                             date: new Date(t.date).toLocaleDateString('pt-BR'),
                             balance: newBalance
                           });
-                          
                           return acc;
                         }, [])}
                       margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                     >
-                <CartesianGrid strokeDasharray="3 3" />
+                      <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" />
-                <YAxis />
+                      <YAxis />
                       <Tooltip formatter={(value) => formatCurrency(value as number)} />
                       <Line type="monotone" dataKey="balance" stroke="#3B82F6" name="Saldo" />
                     </LineChart>
@@ -434,6 +462,7 @@ export function Dashboard() {
               </div>
             </div>
 
+            {/* Histórico de Transações */}
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">Histórico de Transações</h3>
               <div className="overflow-x-auto">
@@ -509,10 +538,10 @@ export function Dashboard() {
                     ))}
                   </Pie>
                   <Tooltip formatter={(value) => formatCurrency(value as number)} />
-                <Legend />
+                  <Legend />
                 </PieChart>
-            </ResponsiveContainer>
-          </div>
+              </ResponsiveContainer>
+            </div>
 
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">Detalhes por Categoria</h3>
@@ -541,7 +570,7 @@ export function Dashboard() {
                           {formatCurrency(expense.amount)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {((expense.amount / totalExpenses) * 100).toFixed(1)}%
+                          {expense.percentage.toFixed(1)}%
                         </td>
                       </tr>
                     ))}
@@ -576,7 +605,11 @@ export function Dashboard() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {transactions
-                      .filter(t => t.type === 'expense' && (!t.installments || t.installments.total === 1))
+                      .filter(
+                        (t) =>
+                          t.type === 'expense' &&
+                          (!t.installments || t.installments.total === 1)
+                      )
                       .map((transaction) => (
                         <tr key={transaction.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -645,7 +678,7 @@ export function Dashboard() {
                 </table>
               </div>
             </div>
-        </div>
+          </div>
         )}
       </div>
     </div>

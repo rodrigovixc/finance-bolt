@@ -68,7 +68,4 @@ export function UserMenu({ user }: UserMenuProps) {
       )}
     </div>
   );
-} 
- 
- 
- 
+}

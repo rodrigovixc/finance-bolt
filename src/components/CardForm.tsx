@@ -12,23 +12,31 @@ export function CardForm() {
   const [cards, setCards] = useState<Card[]>([]);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
 
-  useEffect(() => {
-    fetchCards();
-  }, []);
-
+  // Busca os cartões do usuário logado
   const fetchCards = async () => {
+    // Obtém o usuário atual
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Usuário não autenticado:', userError);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('cards')
       .select('*')
+      .eq('user_id', user.id)
       .order('bank');
 
     if (error) {
       console.error('Erro ao buscar cartões:', error);
       return;
     }
-
     setCards(data || []);
   };
+
+  useEffect(() => {
+    fetchCards();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,17 +45,32 @@ export function CardForm() {
     setSuccess(false);
 
     try {
+      // Obtém o usuário atual
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       if (editingCard) {
+        // Atualiza o cartão somente se o cartão pertencer ao usuário
         const { error } = await supabase
           .from('cards')
           .update({ bank, last_digits: lastDigits })
-          .eq('id', editingCard.id);
+          .eq('id', editingCard.id)
+          .eq('user_id', user.id);
 
         if (error) throw error;
       } else {
+        // Insere novo cartão, incluindo o user_id
         const { error } = await supabase
           .from('cards')
-          .insert([{ bank, last_digits: lastDigits }]);
+          .insert([
+            {
+              bank,
+              last_digits: lastDigits,
+              user_id: user.id, // Necessário para passar na RLS
+            },
+          ]);
 
         if (error) throw error;
       }
@@ -66,16 +89,23 @@ export function CardForm() {
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este cartão?')) return;
 
+    // Obtém o usuário atual para garantir que só exclua seus cartões
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Usuário não autenticado:', userError);
+      return;
+    }
+
     const { error } = await supabase
       .from('cards')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Erro ao excluir cartão:', error);
       return;
     }
-
     fetchCards();
   };
 
@@ -101,7 +131,7 @@ export function CardForm() {
         <h3 className="text-lg font-medium text-gray-900 mb-6">
           {editingCard ? 'Editar Cartão' : 'Novo Cartão'}
         </h3>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 gap-6">
             <div>
