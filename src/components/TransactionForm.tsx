@@ -65,7 +65,7 @@ export function TransactionForm() {
       // Prepara as transações para inserção
       const transactionsToCreate = [];
       const baseDate = new Date(date);
-      const baseAmount = parseFloat(amount) / totalInstallments;
+      const baseAmount = parseFloat(amount.replace(',', '.')) / totalInstallments;
 
       for (let i = 0; i < totalInstallments; i++) {
         const transactionDate = new Date(baseDate);
@@ -369,14 +369,24 @@ export function TransactionForm() {
                 <DollarSign className="h-5 w-5 text-gray-400" />
               </div>
               <input
-                type="text"
-                id="amount"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
-                required
-                placeholder="0,00"
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
+  type="text"
+  id="amount"
+  value={amount}
+  onChange={(e) => {
+    // Permite apenas dígitos e vírgula, garantindo que haja no máximo uma vírgula.
+    let value = e.target.value.replace(/[^0-9,]/g, '');
+    const parts = value.split(',');
+    if (parts.length > 2) {
+      // Caso haja mais de uma vírgula, une os extras
+      value = parts[0] + ',' + parts.slice(1).join('');
+    }
+    setAmount(value);
+  }}
+  required
+  placeholder="0,00"
+  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+/>
+
             </div>
           </div>
 

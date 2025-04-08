@@ -219,6 +219,22 @@ export function Dashboard() {
     }
   };
 
+  // Calcular saldo mensal usando as transações do mês selecionado
+  const monthlyTransactions = transactions.filter((t) => {
+    const dt = new Date(t.date);
+    return dt.getMonth() === selectedMonth.getMonth() && dt.getFullYear() === selectedMonth.getFullYear();
+  });
+  let monthlyIncome = 0;
+  let monthlyExpenses = 0;
+  monthlyTransactions.forEach((t) => {
+    if (t.type === 'income') {
+      monthlyIncome += t.amount;
+    } else {
+      monthlyExpenses += t.amount;
+    }
+  });
+  const monthlyBalance = monthlyIncome - monthlyExpenses;
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-full">
@@ -230,20 +246,71 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Resumo dos saldos */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-gray-900">Saldo Total</h3>
-          <p className="mt-2 text-3xl font-bold text-gray-900">{formatCurrency(balance)}</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-gray-900">Total de Receitas</h3>
-          <p className="mt-2 text-3xl font-bold text-green-600">{formatCurrency(totalIncome)}</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium text-gray-900">Total de Despesas</h3>
-          <p className="mt-2 text-3xl font-bold text-red-600">{formatCurrency(totalExpenses)}</p>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white items-center p-6 rounded-lg shadow">
+        <h3 className="text-lg font-medium text-gray-900">Saldo Total</h3>
+        <p className="mt-2 text-3xl font-bold text-gray-900">{formatCurrency(balance)}</p>
       </div>
+      
+      <div className="bg-white items-center p-6 pt-4 rounded-lg shadow">
+        <div className='flex items-center '>
+        <h3 className="text-lg font-medium text-gray-900">Saldo Mensal</h3>       
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const newDate = new Date(selectedMonth);
+              newDate.setMonth(newDate.getMonth() - 1);
+              setSelectedMonth(newDate);
+            }}
+            className="p-2 hover:bg-gray-100 rounded"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fillRule="evenodd"
+                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+          <span className="font-medium">
+            {selectedMonth.toLocaleDateString('pt-BR', { month: 'numeric', year: '2-digit' })}
+          </span>
+          <button
+            onClick={() => {
+              const newDate = new Date(selectedMonth);
+              newDate.setMonth(newDate.getMonth() + 1);
+              setSelectedMonth(newDate);
+            }}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fillRule="evenodd"
+                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+          </div>
+      </div>
+        
+        {/* Exibição do Saldo e dos Detalhes */}
+        <p className="mt-2 text-3xl font-bold text-gray-900">{formatCurrency(monthlyBalance)}</p>
+      
+      </div>
+
+
+
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-medium text-gray-900">Total de Receitas</h3>
+        <p className="mt-2 text-3xl font-bold text-green-600">{formatCurrency(totalIncome)}</p>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-lg font-medium text-gray-900">Total de Despesas</h3>
+        <p className="mt-2 text-3xl font-bold text-red-600">{formatCurrency(totalExpenses)}</p>
+      </div>
+    </div>
+
 
       <div className="bg-white p-6 rounded-lg shadow">
         {/* Abas para diferentes visualizações */}
