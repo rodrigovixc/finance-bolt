@@ -1,0 +1,689 @@
+# Tipos (src/types/index.ts)
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Card {
+  id: string;
+  user_id: string;
+  name: string;
+  limit: number;
+  balance: number;
+  due_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Category {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  color: string;
+  icon: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IncomeType {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Transaction {
+  id: string;
+  user_id: string;
+  description: string;
+  amount: number;
+  date: string;
+  type: 'income' | 'expense';
+  card_id: string | null;
+  category_id: string | null;
+  income_type_id: string | null;
+  is_recurring: boolean;
+  recurrence_period: string | null;
+  recurrence_end_date: string | null;
+  installments: any | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Subscription {
+  id: string;
+  user_id: string;
+  status: 'active' | 'inactive' | 'cancelled';
+  plan: 'free' | 'premium';
+  start_date: string;
+  end_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+# Páginas
+
+## src/pages/Login.tsx
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { TextField, Button, Paper, Grid, Typography } from '@mui/material';
+
+export const Login: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const { signIn } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await signIn(email, password);
+      navigate('/');
+    } catch (error) {
+      console.error('Erro ao fazer login:', error);
+    }
+  };
+
+  return (
+    <Grid container justifyContent="center" alignItems="center" style={{ minHeight: '100vh' }}>
+      <Grid item xs={12} sm={8} md={6} lg={4}>
+        <Paper elevation={3} sx={{ p: 4 }}>
+          <Typography variant="h4" align="center" gutterBottom>
+            Login
+          </Typography>
+          <form onSubmit={handleSubmit}>
+            <TextField
+              fullWidth
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Senha"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              margin="normal"
+              required
+            />
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              fullWidth
+              sx={{ mt: 2 }}
+            >
+              Entrar
+            </Button>
+          </form>
+        </Paper>
+      </Grid>
+    </Grid>
+  );
+};
+
+## src/pages/Register.tsx
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { TextField, Button, Paper, Grid, Typography } from '@mui/material';
+
+export const Register: React.FC = () => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const { signUp } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await signUp(name, email, password);
+      navigate('/');
+    } catch (error) {
+      console.error('Erro ao registrar:', error);
+    }
+  };
+
+  return (
+    <Grid container justifyContent="center" alignItems="center" style={{ minHeight: '100vh' }}>
+      <Grid item xs={12} sm={8} md={6} lg={4}>
+        <Paper elevation={3} sx={{ p: 4 }}>
+          <Typography variant="h4" align="center" gutterBottom>
+            Registrar
+          </Typography>
+          <form onSubmit={handleSubmit}>
+            <TextField
+              fullWidth
+              label="Nome"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Senha"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              margin="normal"
+              required
+            />
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              fullWidth
+              sx={{ mt: 2 }}
+            >
+              Registrar
+            </Button>
+          </form>
+        </Paper>
+      </Grid>
+    </Grid>
+  );
+};
+
+## src/pages/Dashboard.tsx
+import React from 'react';
+import { useCards, useTransactions } from '../hooks';
+import { Card, CardContent, Grid, Typography } from '@mui/material';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+
+export const Dashboard: React.FC = () => {
+  const { cards, isLoading: cardsLoading } = useCards();
+  const { transactions, isLoading: transactionsLoading } = useTransactions();
+
+  if (cardsLoading || transactionsLoading) {
+    return <div>Carregando...</div>;
+  }
+
+  const totalBalance = cards?.reduce((sum, card) => sum + card.balance, 0) || 0;
+  const totalLimit = cards?.reduce((sum, card) => sum + card.limit, 0) || 0;
+  const availableLimit = totalLimit - totalBalance;
+
+  const monthlyExpenses = transactions
+    ?.filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0) || 0;
+
+  const monthlyIncome = transactions
+    ?.filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0) || 0;
+
+  const monthlyBalance = monthlyIncome - monthlyExpenses;
+
+  return (
+    <Grid container spacing={3}>
+      <Grid item xs={12} sm={6} md={3}>
+        <Card>
+          <CardContent>
+            <Typography color="textSecondary" gutterBottom>
+              Saldo Total
+            </Typography>
+            <Typography variant="h5">
+              R$ {totalBalance.toFixed(2)}
+            </Typography>
+          </CardContent>
+        </Card>
+      </Grid>
+      <Grid item xs={12} sm={6} md={3}>
+        <Card>
+          <CardContent>
+            <Typography color="textSecondary" gutterBottom>
+              Limite Total
+            </Typography>
+            <Typography variant="h5">
+              R$ {totalLimit.toFixed(2)}
+            </Typography>
+          </CardContent>
+        </Card>
+      </Grid>
+      <Grid item xs={12} sm={6} md={3}>
+        <Card>
+          <CardContent>
+            <Typography color="textSecondary" gutterBottom>
+              Limite Disponível
+            </Typography>
+            <Typography variant="h5">
+              R$ {availableLimit.toFixed(2)}
+            </Typography>
+          </CardContent>
+        </Card>
+      </Grid>
+      <Grid item xs={12} sm={6} md={3}>
+        <Card>
+          <CardContent>
+            <Typography color="textSecondary" gutterBottom>
+              Saldo Mensal
+            </Typography>
+            <Typography variant="h5">
+              R$ {monthlyBalance.toFixed(2)}
+            </Typography>
+          </CardContent>
+        </Card>
+      </Grid>
+      
+      <Grid item xs={12}>
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Despesas Mensais
+            </Typography>
+            <BarChart
+              width={500}
+              height={300}
+              data={transactions?.filter(t => t.type === 'expense')}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="amount" fill="#8884d8" />
+            </BarChart>
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
+  );
+};
+
+# Componentes
+
+## src/components/PrivateRoute.tsx
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+
+interface PrivateRouteProps {
+  children: React.ReactNode;
+  path: string;
+}
+
+export const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, path }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div>Carregando...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: path }} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+## src/components/CardForm.tsx
+import React, { useState } from 'react';
+import { useCards } from '../hooks/useCards';
+import { TextField, Button, Grid, Paper } from '@mui/material';
+
+export const CardForm: React.FC = () => {
+  const { createCard } = useCards();
+  const [formData, setFormData] = useState({
+    name: '',
+    limit: '',
+    balance: '',
+    due_date: '',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await createCard.mutateAsync({
+      ...formData,
+      limit: parseFloat(formData.limit),
+      balance: parseFloat(formData.balance),
+    });
+  };
+
+  return (
+    <Paper sx={{ p: 3 }}>
+      <form onSubmit={handleSubmit}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Nome do Cartão"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Limite"
+              type="number"
+              value={formData.limit}
+              onChange={(e) => setFormData({ ...formData, limit: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Saldo"
+              type="number"
+              value={formData.balance}
+              onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Data de Vencimento"
+              type="date"
+              value={formData.due_date}
+              onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Button type="submit" variant="contained" color="primary">
+              Salvar
+            </Button>
+          </Grid>
+        </Grid>
+      </form>
+    </Paper>
+  );
+};
+
+## src/components/CategoryForm.tsx
+import React, { useState } from 'react';
+import { useCategories } from '../hooks/useCategories';
+import { TextField, Button, Grid, Paper, InputAdornment } from '@mui/material';
+
+export const CategoryForm: React.FC = () => {
+  const { createCategory } = useCategories();
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    color: '#000000',
+    icon: '',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await createCategory.mutateAsync(formData);
+  };
+
+  return (
+    <Paper sx={{ p: 3 }}>
+      <form onSubmit={handleSubmit}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Nome da Categoria"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Descrição"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Cor"
+              type="color"
+              value={formData.color}
+              onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">#</InputAdornment>,
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Ícone"
+              value={formData.icon}
+              onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Button type="submit" variant="contained" color="primary">
+              Salvar
+            </Button>
+          </Grid>
+        </Grid>
+      </form>
+    </Paper>
+  );
+};
+
+## src/components/TransactionForm.tsx
+import React, { useState } from 'react';
+import { useTransactions, useCards, useCategories, useIncomeTypes } from '../hooks';
+import { TextField, Button, Grid, Paper, MenuItem, FormControl, InputLabel, Select } from '@mui/material';
+
+export const TransactionForm: React.FC = () => {
+  const { createTransaction } = useTransactions();
+  const { cards } = useCards();
+  const { categories } = useCategories();
+  const { incomeTypes } = useIncomeTypes();
+
+  const [formData, setFormData] = useState({
+    description: '',
+    amount: '',
+    date: '',
+    type: 'expense',
+    card_id: '',
+    category_id: '',
+    income_type_id: '',
+    is_recurring: false,
+    recurrence_period: '',
+    recurrence_end_date: '',
+    installments: null,
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await createTransaction.mutateAsync({
+      ...formData,
+      amount: parseFloat(formData.amount),
+      card_id: formData.card_id || null,
+      category_id: formData.category_id || null,
+      income_type_id: formData.income_type_id || null,
+      installments: formData.installments ? JSON.parse(formData.installments) : null,
+    });
+  };
+
+  return (
+    <Paper sx={{ p: 3 }}>
+      <form onSubmit={handleSubmit}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Descrição"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Valor"
+              type="number"
+              value={formData.amount}
+              onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Data"
+              type="date"
+              value={formData.date}
+              onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Tipo</InputLabel>
+              <Select
+                value={formData.type}
+                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              >
+                <MenuItem value="expense">Despesa</MenuItem>
+                <MenuItem value="income">Receita</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Cartão</InputLabel>
+              <Select
+                value={formData.card_id}
+                onChange={(e) => setFormData({ ...formData, card_id: e.target.value })}
+              >
+                <MenuItem value="">Nenhum</MenuItem>
+                {cards?.map((card) => (
+                  <MenuItem key={card.id} value={card.id}>
+                    {card.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Categoria</InputLabel>
+              <Select
+                value={formData.category_id}
+                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+              >
+                <MenuItem value="">Nenhuma</MenuItem>
+                {categories?.map((category) => (
+                  <MenuItem key={category.id} value={category.id}>
+                    {category.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          {formData.type === 'income' && (
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Tipo de Renda</InputLabel>
+                <Select
+                  value={formData.income_type_id}
+                  onChange={(e) => setFormData({ ...formData, income_type_id: e.target.value })}
+                >
+                  <MenuItem value="">Nenhum</MenuItem>
+                  {incomeTypes?.map((incomeType) => (
+                    <MenuItem key={incomeType.id} value={incomeType.id}>
+                      {incomeType.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          )}
+          <Grid item xs={12}>
+            <Button type="submit" variant="contained" color="primary">
+              Salvar
+            </Button>
+          </Grid>
+        </Grid>
+      </form>
+    </Paper>
+  );
+};
+
+## src/components/Subscription.tsx
+import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { Button, Card, CardContent, Typography, Grid } from '@mui/material';
+import { createSubscription } from '../lib/mercadopago';
+
+export const Subscription: React.FC = () => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubscribe = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const preference = await createSubscription(user?.email || '');
+      window.location.href = preference.init_point;
+    } catch (err) {
+      setError('Erro ao criar assinatura. Tente novamente mais tarde.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Grid container justifyContent="center" alignItems="center" style={{ minHeight: '100vh' }}>
+      <Grid item xs={12} sm={8} md={6}>
+        <Card>
+          <CardContent>
+            <Typography variant="h4" align="center" gutterBottom>
+              Plano Premium
+            </Typography>
+            <Typography variant="h6" align="center" gutterBottom>
+              R$ 18,90/mês
+            </Typography>
+            <Typography variant="body1" paragraph>
+              Benefícios do plano premium:
+            </Typography>
+            <ul>
+              <li>Análise avançada de gastos</li>
+              <li>Relatórios personalizados</li>
+              <li>Suporte prioritário</li>
+              <li>Recursos exclusivos</li>
+            </ul>
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              onClick={handleSubscribe}
+              disabled={loading}
+            >
+              {loading ? 'Processando...' : 'Assinar Agora'}
+            </Button>
+            {error && (
+              <Typography color="error" align="center" sx={{ mt: 2 }}>
+                {error}
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
+  );
+}; 

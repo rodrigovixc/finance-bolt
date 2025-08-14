@@ -13,8 +13,10 @@
     "@supabase/supabase-js": "^2.49.4",
     "date-fns": "^3.3.1",
     "lucide-react": "^0.344.0",
+    "mercadopago": "^2.4.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^7.5.0",
     "recharts": "^2.15.2"
   },
   "devDependencies": {

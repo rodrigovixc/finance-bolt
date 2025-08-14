@@ -1,0 +1,990 @@
+# Especificação do Projeto Bolt Finance
+
+## Visão Geral
+Sistema de controle financeiro pessoal com autenticação, gerenciamento de cartões, transações, categorias e tipos de renda.
+
+## Funcionalidades Principais
+
+### 1. Autenticação e Autorização
+- Registro de usuários com email e senha
+- Login com email e senha
+- Recuperação de senha
+- Proteção de rotas autenticadas
+- Gerenciamento de sessão
+- Logout
+
+### 2. Gerenciamento de Cartões
+- Cadastro de cartões de crédito
+  - Nome do cartão
+  - Limite disponível
+  - Saldo atual
+  - Data de vencimento
+- Listagem de cartões
+- Edição de cartões
+- Exclusão de cartões
+- Visualização de saldo e limite disponível
+
+### 3. Gerenciamento de Transações
+- Cadastro de transações
+  - Descrição
+  - Valor
+  - Data
+  - Tipo (receita/despesa)
+  - Cartão associado
+  - Categoria
+  - Tipo de renda (para receitas)
+  - Recorrência (opcional)
+  - Parcelamento (opcional)
+- Listagem de transações
+- Filtros por:
+  - Data
+  - Tipo
+  - Categoria
+  - Cartão
+- Edição de transações
+- Exclusão de transações
+
+### 4. Gerenciamento de Categorias
+- Cadastro de categorias
+  - Nome
+  - Descrição
+  - Cor
+  - Ícone
+- Listagem de categorias
+- Edição de categorias
+- Exclusão de categorias
+
+### 5. Gerenciamento de Tipos de Renda
+- Cadastro de tipos de renda
+  - Nome
+  - Descrição
+- Listagem de tipos de renda
+- Edição de tipos de renda
+- Exclusão de tipos de renda
+
+### 6. Dashboard
+- Visão geral do saldo
+- Gráfico de despesas por categoria
+- Gráfico de despesas mensais
+- Total de receitas do mês
+- Total de despesas do mês
+- Saldo mensal
+- Limite total dos cartões
+- Limite disponível
+
+### 7. Assinatura Premium
+- Integração com Mercado Pago
+- Plano mensal de R$ 18,90
+- Página de assinatura
+- Status de pagamento
+- Webhook para notificações
+- Gerenciamento de status da assinatura
+
+## Implementação com Laravel e React
+
+### Backend (Laravel)
+
+1. Configuração Inicial
+```bash
+composer create-project laravel/laravel bolt-finance-backend
+cd bolt-finance-backend
+```
+
+2. Estrutura de Banco de Dados
+```sql
+-- Tabela de usuários (já existe por padrão)
+-- Tabela de cartões
+CREATE TABLE cards (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED,
+    name VARCHAR(255),
+    limit DECIMAL(10,2),
+    balance DECIMAL(10,2),
+    due_date DATE,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Tabela de categorias
+CREATE TABLE categories (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED,
+    name VARCHAR(255),
+    description TEXT,
+    color VARCHAR(7),
+    icon VARCHAR(255),
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Tabela de tipos de renda
+CREATE TABLE income_types (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED,
+    name VARCHAR(255),
+    description TEXT,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Tabela de transações
+CREATE TABLE transactions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED,
+    description VARCHAR(255),
+    amount DECIMAL(10,2),
+    date DATE,
+    type ENUM('income', 'expense'),
+    card_id BIGINT UNSIGNED NULL,
+    category_id BIGINT UNSIGNED NULL,
+    income_type_id BIGINT UNSIGNED NULL,
+    is_recurring BOOLEAN DEFAULT FALSE,
+    recurrence_period VARCHAR(50) NULL,
+    recurrence_end_date DATE NULL,
+    installments JSON NULL,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (card_id) REFERENCES cards(id),
+    FOREIGN KEY (category_id) REFERENCES categories(id),
+    FOREIGN KEY (income_type_id) REFERENCES income_types(id)
+);
+
+-- Tabela de assinaturas
+CREATE TABLE subscriptions (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED,
+    status ENUM('active', 'inactive', 'cancelled'),
+    plan ENUM('free', 'premium'),
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+```
+
+3. Configuração de Autenticação
+```bash
+composer require laravel/sanctum
+php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
+```
+
+4. Modelos
+```php
+// app/Models/Card.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Card extends Model
+{
+    protected $fillable = ['name', 'limit', 'balance', 'due_date'];
+    
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+    
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
+}
+
+// app/Models/Category.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Category extends Model
+{
+    protected $fillable = ['name', 'description', 'color', 'icon'];
+    
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+    
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
+}
+
+// app/Models/IncomeType.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class IncomeType extends Model
+{
+    protected $fillable = ['name', 'description'];
+    
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+    
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
+}
+
+// app/Models/Transaction.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Transaction extends Model
+{
+    protected $fillable = [
+        'description',
+        'amount',
+        'date',
+        'type',
+        'card_id',
+        'category_id',
+        'income_type_id',
+        'is_recurring',
+        'recurrence_period',
+        'recurrence_end_date',
+        'installments'
+    ];
+    
+    protected $casts = [
+        'installments' => 'json',
+        'is_recurring' => 'boolean'
+    ];
+    
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+    
+    public function card()
+    {
+        return $this->belongsTo(Card::class);
+    }
+    
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
+    
+    public function incomeType()
+    {
+        return $this->belongsTo(IncomeType::class);
+    }
+}
+
+// app/Models/Subscription.php
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Subscription extends Model
+{
+    protected $fillable = ['status', 'plan', 'start_date', 'end_date'];
+    
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
+```
+
+5. Controladores
+```php
+// app/Http/Controllers/AuthController.php
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
+
+class AuthController extends Controller
+{
+    public function register(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8',
+        ]);
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user,
+            'token' => $token,
+        ]);
+    }
+
+    public function login(Request $request)
+    {
+        if (!Auth::attempt($request->only('email', 'password'))) {
+            return response()->json([
+                'message' => 'Credenciais inválidas'
+            ], 401);
+        }
+
+        $user = User::where('email', $request->email)->firstOrFail();
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'user' => $user,
+            'token' => $token,
+        ]);
+    }
+
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+        return response()->json(['message' => 'Logout realizado com sucesso']);
+    }
+}
+
+// app/Http/Controllers/CardController.php
+namespace App\Http\Controllers;
+
+use App\Models\Card;
+use Illuminate\Http\Request;
+
+class CardController extends Controller
+{
+    public function index()
+    {
+        return Card::where('user_id', auth()->id())->get();
+    }
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'limit' => 'required|numeric|min:0',
+            'balance' => 'required|numeric',
+            'due_date' => 'required|date',
+        ]);
+
+        return Card::create([
+            'user_id' => auth()->id(),
+            'name' => $request->name,
+            'limit' => $request->limit,
+            'balance' => $request->balance,
+            'due_date' => $request->due_date,
+        ]);
+    }
+
+    public function update(Request $request, Card $card)
+    {
+        $this->authorize('update', $card);
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'limit' => 'required|numeric|min:0',
+            'balance' => 'required|numeric',
+            'due_date' => 'required|date',
+        ]);
+
+        $card->update($request->all());
+        return $card;
+    }
+
+    public function destroy(Card $card)
+    {
+        $this->authorize('delete', $card);
+        $card->delete();
+        return response()->json(null, 204);
+    }
+}
+
+// Implementar controladores similares para Category, IncomeType, Transaction e Subscription
+```
+
+6. Rotas
+```php
+// routes/api.php
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CardController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\IncomeTypeController;
+use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\SubscriptionController;
+
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout']);
+    
+    Route::apiResource('cards', CardController::class);
+    Route::apiResource('categories', CategoryController::class);
+    Route::apiResource('income-types', IncomeTypeController::class);
+    Route::apiResource('transactions', TransactionController::class);
+    Route::apiResource('subscriptions', SubscriptionController::class);
+    
+    Route::get('/dashboard', [DashboardController::class, 'index']);
+});
+```
+
+7. Políticas de Autorização
+```php
+// app/Policies/CardPolicy.php
+namespace App\Policies;
+
+use App\Models\User;
+use App\Models\Card;
+
+class CardPolicy
+{
+    public function view(User $user, Card $card)
+    {
+        return $user->id === $card->user_id;
+    }
+
+    public function update(User $user, Card $card)
+    {
+        return $user->id === $card->user_id;
+    }
+
+    public function delete(User $user, Card $card)
+    {
+        return $user->id === $card->user_id;
+    }
+}
+
+// Implementar políticas similares para Category, IncomeType, Transaction e Subscription
+```
+
+8. Integração com Mercado Pago
+```php
+// app/Services/MercadoPagoService.php
+namespace App\Services;
+
+use MercadoPago\SDK;
+use MercadoPago\Preference;
+
+class MercadoPagoService
+{
+    public function __construct()
+    {
+        SDK::setAccessToken(config('services.mercadopago.access_token'));
+    }
+
+    public function createSubscription($user)
+    {
+        $preference = new Preference();
+        
+        $preference->items = [
+            [
+                'title' => 'Plano Premium - Bolt Finance',
+                'unit_price' => 18.90,
+                'quantity' => 1,
+                'currency_id' => 'BRL',
+            ]
+        ];
+        
+        $preference->payer = [
+            'email' => $user->email
+        ];
+        
+        $preference->back_urls = [
+            'success' => config('app.url') . '/payment/success',
+            'failure' => config('app.url') . '/payment/failure',
+            'pending' => config('app.url') . '/payment/pending'
+        ];
+        
+        $preference->auto_return = 'approved';
+        $preference->notification_url = config('app.url') . '/api/webhook/mercadopago';
+        $preference->statement_descriptor = 'BOLT FINANCE';
+        
+        $preference->save();
+        
+        return $preference;
+    }
+}
+```
+
+### Frontend (React)
+
+1. Configuração Inicial
+```bash
+npx create-react-app bolt-finance-frontend --template typescript
+cd bolt-finance-frontend
+npm install @mui/material @emotion/react @emotion/styled
+npm install @mui/icons-material
+npm install axios
+npm install react-router-dom
+npm install react-query
+npm install mercadopago
+```
+
+2. Estrutura de Arquivos
+```
+src/
+  ├── components/
+  │   ├── Auth/
+  │   ├── Dashboard/
+  │   ├── Cards/
+  │   ├── Transactions/
+  │   ├── Categories/
+  │   ├── IncomeTypes/
+  │   └── Subscription/
+  ├── pages/
+  ├── services/
+  ├── hooks/
+  ├── contexts/
+  ├── types/
+  └── utils/
+```
+
+3. Configuração do Axios
+```typescript
+// src/services/api.ts
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL,
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default api;
+```
+
+4. Contexto de Autenticação
+```typescript
+// src/contexts/AuthContext.tsx
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import api from '../services/api';
+
+interface AuthContextData {
+  user: User | null;
+  loading: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (name: string, email: string, password: string) => Promise<void>;
+  signOut: () => void;
+}
+
+const AuthContext = createContext<AuthContextData>({} as AuthContextData);
+
+export const AuthProvider: React.FC = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      api.defaults.headers.authorization = `Bearer ${token}`;
+      // Carregar dados do usuário
+    }
+    setLoading(false);
+  }, []);
+
+  const signIn = async (email: string, password: string) => {
+    const response = await api.post('/login', { email, password });
+    const { user, token } = response.data;
+    
+    localStorage.setItem('token', token);
+    api.defaults.headers.authorization = `Bearer ${token}`;
+    setUser(user);
+  };
+
+  const signUp = async (name: string, email: string, password: string) => {
+    const response = await api.post('/register', { name, email, password });
+    const { user, token } = response.data;
+    
+    localStorage.setItem('token', token);
+    api.defaults.headers.authorization = `Bearer ${token}`;
+    setUser(user);
+  };
+
+  const signOut = () => {
+    localStorage.removeItem('token');
+    api.defaults.headers.authorization = undefined;
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => useContext(AuthContext);
+```
+
+5. Hooks Personalizados
+```typescript
+// src/hooks/useCards.ts
+import { useQuery, useMutation, useQueryClient } from 'react-query';
+import api from '../services/api';
+
+export const useCards = () => {
+  const queryClient = useQueryClient();
+
+  const { data: cards, isLoading } = useQuery('cards', async () => {
+    const response = await api.get('/cards');
+    return response.data;
+  });
+
+  const createCard = useMutation(
+    (newCard: Card) => api.post('/cards', newCard),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('cards');
+      },
+    }
+  );
+
+  const updateCard = useMutation(
+    ({ id, ...data }: Card) => api.put(`/cards/${id}`, data),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('cards');
+      },
+    }
+  );
+
+  const deleteCard = useMutation(
+    (id: string) => api.delete(`/cards/${id}`),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('cards');
+      },
+    }
+  );
+
+  return {
+    cards,
+    isLoading,
+    createCard,
+    updateCard,
+    deleteCard,
+  };
+};
+
+// Implementar hooks similares para categories, incomeTypes, transactions e subscriptions
+```
+
+6. Componentes
+```typescript
+// src/components/CardForm.tsx
+import React, { useState } from 'react';
+import { useCards } from '../hooks/useCards';
+import { TextField, Button, Grid, Paper } from '@mui/material';
+
+export const CardForm: React.FC = () => {
+  const { createCard } = useCards();
+  const [formData, setFormData] = useState({
+    name: '',
+    limit: '',
+    balance: '',
+    due_date: '',
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await createCard.mutateAsync({
+      ...formData,
+      limit: parseFloat(formData.limit),
+      balance: parseFloat(formData.balance),
+    });
+    // Limpar formulário ou redirecionar
+  };
+
+  return (
+    <Paper sx={{ p: 3 }}>
+      <form onSubmit={handleSubmit}>
+        <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Nome do Cartão"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Limite"
+              type="number"
+              value={formData.limit}
+              onChange={(e) => setFormData({ ...formData, limit: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Saldo"
+              type="number"
+              value={formData.balance}
+              onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Data de Vencimento"
+              type="date"
+              value={formData.due_date}
+              onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Button type="submit" variant="contained" color="primary">
+              Salvar
+            </Button>
+          </Grid>
+        </Grid>
+      </form>
+    </Paper>
+  );
+};
+
+// Implementar componentes similares para CategoryForm, IncomeTypeForm, TransactionForm e Subscription
+```
+
+7. Páginas
+```typescript
+// src/pages/Dashboard.tsx
+import React from 'react';
+import { useCards, useTransactions } from '../hooks';
+import { Card, CardContent, Grid, Typography } from '@mui/material';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+
+export const Dashboard: React.FC = () => {
+  const { cards, isLoading: cardsLoading } = useCards();
+  const { transactions, isLoading: transactionsLoading } = useTransactions();
+
+  if (cardsLoading || transactionsLoading) {
+    return <div>Carregando...</div>;
+  }
+
+  const totalBalance = cards?.reduce((sum, card) => sum + card.balance, 0) || 0;
+  const totalLimit = cards?.reduce((sum, card) => sum + card.limit, 0) || 0;
+  const availableLimit = totalLimit - totalBalance;
+
+  const monthlyExpenses = transactions
+    ?.filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0) || 0;
+
+  const monthlyIncome = transactions
+    ?.filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0) || 0;
+
+  const monthlyBalance = monthlyIncome - monthlyExpenses;
+
+  return (
+    <Grid container spacing={3}>
+      <Grid item xs={12} sm={6} md={3}>
+        <Card>
+          <CardContent>
+            <Typography color="textSecondary" gutterBottom>
+              Saldo Total
+            </Typography>
+            <Typography variant="h5">
+              R$ {totalBalance.toFixed(2)}
+            </Typography>
+          </CardContent>
+        </Card>
+      </Grid>
+      {/* Outros cards de métricas */}
+      
+      <Grid item xs={12}>
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Despesas Mensais
+            </Typography>
+            <BarChart
+              width={500}
+              height={300}
+              data={transactions?.filter(t => t.type === 'expense')}
+            >
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="amount" fill="#8884d8" />
+            </BarChart>
+          </CardContent>
+        </Card>
+      </Grid>
+    </Grid>
+  );
+};
+```
+
+8. Rotas
+```typescript
+// src/App.tsx
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { Dashboard } from './pages/Dashboard';
+import { Login } from './pages/Login';
+import { Register } from './pages/Register';
+import { PrivateRoute } from './components/PrivateRoute';
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <PrivateRoute path="/" element={<Dashboard />} />
+          <PrivateRoute path="/cards" element={<CardList />} />
+          <PrivateRoute path="/transactions" element={<TransactionList />} />
+          <PrivateRoute path="/categories" element={<CategoryList />} />
+          <PrivateRoute path="/income-types" element={<IncomeTypeList />} />
+          <PrivateRoute path="/subscription" element={<Subscription />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
+};
+```
+
+## Configuração do Ambiente
+
+1. Backend (Laravel)
+```bash
+# Instalar dependências
+composer install
+
+# Configurar ambiente
+cp .env.example .env
+php artisan key:generate
+
+# Configurar banco de dados no .env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=bolt_finance
+DB_USERNAME=root
+DB_PASSWORD=
+
+# Executar migrações
+php artisan migrate
+
+# Iniciar servidor
+php artisan serve
+```
+
+2. Frontend (React)
+```bash
+# Instalar dependências
+npm install
+
+# Configurar ambiente
+cp .env.example .env.local
+
+# Configurar variáveis no .env.local
+REACT_APP_API_URL=http://localhost:8000/api
+
+# Iniciar servidor de desenvolvimento
+npm start
+```
+
+## Deploy
+
+1. Backend (Laravel)
+- Configurar servidor web (Apache/Nginx)
+- Configurar SSL
+- Configurar filas para processamento assíncrono
+- Configurar cache
+- Configurar backups automáticos
+
+2. Frontend (React)
+- Build de produção
+```bash
+npm run build
+```
+- Configurar servidor web para servir arquivos estáticos
+- Configurar CDN para assets
+- Configurar cache de assets
+
+## Monitoramento e Manutenção
+
+1. Backend
+- Configurar logs
+- Configurar monitoramento de erros (Sentry)
+- Configurar monitoramento de performance
+- Configurar alertas
+
+2. Frontend
+- Configurar monitoramento de erros (Sentry)
+- Configurar analytics
+- Configurar monitoramento de performance
+
+## Segurança
+
+1. Backend
+- Implementar rate limiting
+- Implementar CORS
+- Implementar validação de entrada
+- Implementar sanitização de dados
+- Implementar proteção contra SQL injection
+- Implementar proteção contra XSS
+- Implementar proteção contra CSRF
+
+2. Frontend
+- Implementar sanitização de dados
+- Implementar proteção contra XSS
+- Implementar validação de formulários
+- Implementar proteção de rotas
+- Implementar refresh token
+- Implementar logout em todas as abas
+
+## Testes
+
+1. Backend
+- Testes unitários
+- Testes de integração
+- Testes de API
+- Testes de performance
+
+2. Frontend
+- Testes unitários
+- Testes de componentes
+- Testes de integração
+- Testes de performance
+
+## Documentação
+
+1. Backend
+- Documentação da API (Swagger/OpenAPI)
+- Documentação de código
+- Documentação de deploy
+- Documentação de manutenção
+
+2. Frontend
+- Documentação de componentes
+- Documentação de hooks
+- Documentação de contextos
+- Documentação de serviços 
