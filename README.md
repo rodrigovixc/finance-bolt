@@ -1,105 +1,116 @@
 # Bolt Finance
 
-Sistema de controle financeiro pessoal com foco em cartões de crédito.
+Personal finance tracker built around the thing most trackers get wrong: **credit card
+installments**. A purchase split into 12x is not one expense in one month, it is twelve
+commitments across twelve future months, and your real balance depends on knowing that.
 
-## 🚀 Funcionalidades
+React + TypeScript on the front, Supabase (Postgres) on the back, with Row Level
+Security doing the authorization instead of the application code.
 
-- 📊 Dashboard com visão geral das finanças
-- 💳 Controle de cartões de crédito
-- 💰 Registro de transações (receitas e despesas)
-- 📈 Categorização de despesas
-- 📅 Controle de parcelamentos
-- 📊 Gráficos e relatórios
+## Why installments are the hard part
 
-## 🛠️ Tecnologias Utilizadas
+In Brazil most card purchases are split (`parcelado`). A tracker that records a 1,200
+purchase as a single expense in March tells you nothing useful about April. This one
+stores the installment plan on the transaction:
 
-- React
-- TypeScript
-- Supabase (PostgreSQL)
-- Tailwind CSS
-- Recharts
-
-## 📋 Pré-requisitos
-
-- Node.js 18+
-- npm ou yarn
-- Conta no Supabase
-
-## 🔧 Instalação
-
-1. Clone o repositório:
-```bash
-git clone https://github.com/seu-usuario/bolt-finance.git
-cd bolt-finance
+```ts
+installments?: {
+  total: number;     // 12
+  current: number;   // 3  → third of twelve
+}
 ```
 
-2. Instale as dependências:
+so the dashboard can answer "what is already committed for next month" instead of only
+"what did I spend last month".
+
+Recurring transactions are modelled separately (`is_recurring`, `recurrence_period`,
+`recurrence_end_date`), because a subscription and a split purchase behave differently:
+one has no end, the other has exactly N occurrences.
+
+## Data model
+
+```
+cards ──────┐
+            ├──→ transactions ←── categories
+income_types ┘
+```
+
+| Table | Holds |
+|---|---|
+| `cards` | Bank, last four digits, statement due date |
+| `categories` | User defined, with colour and icon |
+| `income_types` | Salary, freelance, and so on |
+| `transactions` | Income or expense, optionally tied to a card, category or income type, optionally installment or recurring |
+
+## Authorization lives in the database
+
+Every table has RLS enabled **and forced**:
+
+```sql
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions FORCE ROW LEVEL SECURITY;
+```
+
+`FORCE` is the part that matters. Without it the table owner bypasses its own policies.
+With it, ownership rules apply to every role, so the front end cannot read another
+user's rows even if a query is written wrong. The isolation is not in the client.
+
+`src/utils/checkRLS.ts` verifies from the client that the policies are actually in
+force, so a misconfigured environment fails loudly instead of leaking quietly.
+
+## Stack
+
+| Layer | Tech |
+|---|---|
+| Front end | React 18, TypeScript, Vite, Tailwind |
+| Charts | Recharts |
+| Backend, auth, database | Supabase (Postgres + RLS) |
+| Dates | date-fns |
+| E2E tests | Cypress |
+
+## Tests
+
+End to end with Cypress, covering the flows where a bug costs money:
+
+```bash
+npx cypress run
+```
+
+| Spec | Covers |
+|---|---|
+| `auth.cy.ts` | Sign up, sign in, session |
+| `cards.cy.ts` | Card CRUD |
+| `income-types.cy.ts` | Income type CRUD |
+| `transactions.cy.ts` | Transactions, including installments |
+| `dashboard.cy.ts` | Aggregates and charts |
+
+## Running locally
+
 ```bash
 npm install
 ```
 
-## ⚙️ Configuração do Supabase
+Create a Supabase project, then apply everything in `supabase/migrations/` in filename
+order. `20240315000001_enable_rls.sql` is not optional: without it the tables are open.
 
-1. Crie uma conta no [Supabase](https://supabase.com) se ainda não tiver
+Create a `.env` with the project credentials from Project Settings → API:
 
-2. Crie um novo projeto:
-   - Clique em "New Project"
-   - Dê um nome ao projeto (ex: "bolt-finance")
-   - Escolha uma senha para o banco de dados
-   - Selecione a região mais próxima (ex: São Paulo)
-   - Clique em "Create new project"
-
-3. Configure o banco de dados:
-   - Vá para a seção "SQL Editor"
-   - Copie e cole todo o conteúdo do arquivo `supabase/migrations/001_initial_schema.sql`
-   - Execute o script
-
-4. Obtenha as credenciais do projeto:
-   - Vá para "Project Settings" > "API"
-   - Copie a URL do projeto e a chave anon/public
-
-## 🔑 Configuração do Ambiente
-
-1. Crie um arquivo `.env` na raiz do projeto:
-```bash
-touch .env
-```
-
-2. Adicione as seguintes variáveis de ambiente:
 ```env
-VITE_SUPABASE_URL=sua_url_do_supabase
-VITE_SUPABASE_ANON_KEY=sua_chave_anonima_do_supabase
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
 ```
 
-Substitua `sua_url_do_supabase` e `sua_chave_anonima_do_supabase` pelos valores obtidos no passo 4 da configuração do Supabase.
+Then:
 
-## 🚀 Executando o Projeto
-
-1. Inicie o servidor de desenvolvimento:
 ```bash
-npm run dev
+npm run dev     # http://localhost:5173
 ```
 
-2. Acesse o projeto em:
-```
-http://localhost:5173
-```
+## Scope
 
-## 📝 Estrutura do Banco de Dados
+Personal project. One user per account, no shared budgets, no bank import. The focus was
+getting installments and authorization right rather than breadth of features.
 
-- `cards`: Armazena os cartões de crédito
-- `transactions`: Registra todas as transações (despesas e receitas)
-- `income_types`: Tipos de receitas (salário, freelance, etc.)
-- `categories`: Categorias de despesas
+## License
 
-## 🤝 Contribuindo
-
-1. Faça um fork do projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/nova-feature`)
-3. Commit suas mudanças (`git commit -m 'Adiciona nova feature'`)
-4. Push para a branch (`git push origin feature/nova-feature`)
-5. Abra um Pull Request
-
-## 📄 Licença
-
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes. 
+MIT. See [LICENSE](LICENSE).
