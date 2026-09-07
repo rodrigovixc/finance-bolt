@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, Category, Transaction } from '../types';
 import { supabase } from '../lib/supabase';
-import { AlertTriangle, Download, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Download, Search, TrendingDown, TrendingUp, X } from 'lucide-react';
 import {
   Period,
   cardCycle,
@@ -29,8 +29,19 @@ interface Breakdown {
 }
 
 type CardFilter = 'all' | 'none' | string;
+type CategoryFilter = 'all' | 'none' | string;
+type TypeFilter = 'all' | 'expense' | 'income';
 
 const SEM_CATEGORIA = 'sem-categoria';
+
+/** Compara ignorando acentos e caixa, para "alimentacao" achar "Alimentação". */
+function normalize(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
 
 function variation(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
@@ -65,6 +76,9 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>(() => currentMonth());
   const [cardFilter, setCardFilter] = useState<CardFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [search, setSearch] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Record<string, Category>>({});
 
@@ -122,23 +136,54 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
     };
   }, [period, comparison]);
 
-  const matchesCard = useMemo(() => {
+  const matchesFilters = useMemo(() => {
+    const term = normalize(search);
+
     return (transaction: Transaction) => {
-      if (cardFilter === 'all') return true;
-      if (cardFilter === 'none') return !transaction.card_id;
-      return transaction.card_id === cardFilter;
+      if (cardFilter === 'none' && transaction.card_id) return false;
+      if (cardFilter !== 'all' && cardFilter !== 'none' && transaction.card_id !== cardFilter) return false;
+
+      if (categoryFilter === 'none' && transaction.category_id) return false;
+      if (categoryFilter !== 'all' && categoryFilter !== 'none' && transaction.category_id !== categoryFilter) {
+        return false;
+      }
+
+      if (typeFilter !== 'all' && transaction.type !== typeFilter) return false;
+
+      if (term) {
+        // A busca cobre descrição e nome da categoria, então digitar
+        // "alimentação" encontra os lançamentos daquela categoria.
+        const categoryName = transaction.category_id ? categories[transaction.category_id]?.name || '' : '';
+        if (!normalize(`${transaction.description} ${categoryName}`).includes(term)) return false;
+      }
+
+      return true;
     };
-  }, [cardFilter]);
+  }, [cardFilter, categoryFilter, typeFilter, search, categories]);
 
   const inPeriod = useMemo(
-    () => transactions.filter((t) => t.date >= period.start && t.date <= period.end && matchesCard(t)),
-    [transactions, period, matchesCard]
+    () => transactions.filter((t) => t.date >= period.start && t.date <= period.end && matchesFilters(t)),
+    [transactions, period, matchesFilters]
   );
 
   const inComparison = useMemo(
-    () => transactions.filter((t) => t.date >= comparison.start && t.date <= comparison.end && matchesCard(t)),
-    [transactions, comparison, matchesCard]
+    () => transactions.filter((t) => t.date >= comparison.start && t.date <= comparison.end && matchesFilters(t)),
+    [transactions, comparison, matchesFilters]
   );
+
+  const categoryOptions = useMemo(
+    () => Object.values(categories).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+    [categories]
+  );
+
+  const hasActiveFilters = cardFilter !== 'all' || categoryFilter !== 'all' || typeFilter !== 'all' || search !== '';
+
+  const clearFilters = () => {
+    setCardFilter('all');
+    setCategoryFilter('all');
+    setTypeFilter('all');
+    setSearch('');
+  };
 
   const totals = useMemo(() => {
     const sum = (list: Transaction[], type: 'income' | 'expense') =>
@@ -313,6 +358,59 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
               ))}
             </select>
           </div>
+          <div>
+            <label htmlFor="closing-category" className="block text-sm font-medium text-gray-700 mb-1">
+              Categoria
+            </label>
+            <select
+              id="closing-category"
+              data-testid="closing-category"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">Todas</option>
+              <option value="none">Sem categoria</option>
+              {categoryOptions.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="closing-type" className="block text-sm font-medium text-gray-700 mb-1">
+              Tipo
+            </label>
+            <select
+              id="closing-type"
+              data-testid="closing-type"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">Tudo</option>
+              <option value="expense">Só despesas</option>
+              <option value="income">Só receitas</option>
+            </select>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label htmlFor="closing-search" className="block text-sm font-medium text-gray-700 mb-1">
+              Buscar
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                id="closing-search"
+                data-testid="closing-search"
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Descrição ou categoria..."
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
           <button
             onClick={exportCsv}
             disabled={inPeriod.length === 0}
@@ -344,6 +442,56 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
               </button>
             ))}
         </div>
+
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-2" data-testid="closing-active-filters">
+            <span className="text-sm text-gray-500">Filtros ativos:</span>
+            {categoryFilter !== 'all' && (
+              <button
+                onClick={() => setCategoryFilter('all')}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200"
+              >
+                {categoryFilter === 'none' ? 'Sem categoria' : categories[categoryFilter]?.name || 'Categoria'}
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {cardFilter !== 'all' && (
+              <button
+                onClick={() => setCardFilter('all')}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200"
+              >
+                {cardFilter === 'none'
+                  ? 'Sem cartão'
+                  : (() => {
+                      const card = cards.find((c) => c.id === cardFilter);
+                      return card ? `${card.bank} (${card.last_digits})` : 'Cartão';
+                    })()}
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {typeFilter !== 'all' && (
+              <button
+                onClick={() => setTypeFilter('all')}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200"
+              >
+                {typeFilter === 'expense' ? 'Só despesas' : 'Só receitas'}
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 hover:bg-blue-200"
+              >
+                "{search}"
+                <X className="w-3 h-3" />
+              </button>
+            )}
+            <button onClick={clearFilters} className="text-xs text-gray-500 underline hover:text-gray-700">
+              limpar tudo
+            </button>
+          </div>
+        )}
 
         {period.start > period.end ? (
           <p className="text-sm text-red-600">A data inicial precisa ser anterior à data final.</p>
@@ -400,7 +548,7 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
           </div>
 
           {/* Gargalos identificados */}
-          {bottlenecks.length > 0 && (
+          {categoryFilter === 'all' && bottlenecks.length > 0 && (
             <div className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-center mb-4">
                 <AlertTriangle className="w-5 h-5 text-amber-500 mr-2" />
@@ -429,13 +577,29 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
 
           {/* Despesas por categoria */}
           <div className="bg-white p-6 rounded-lg shadow">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Despesas por categoria</h3>
+            <div className="flex items-baseline justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Despesas por categoria</h3>
+              {categoryFilter === 'all' && byCategory.length > 1 && (
+                <span className="text-xs text-gray-500">clique numa categoria para ver os lançamentos</span>
+              )}
+            </div>
             {byCategory.length === 0 ? (
-              <p className="text-gray-500">Nenhuma despesa no período selecionado.</p>
+              <p className="text-gray-500">
+                Nenhuma despesa {hasActiveFilters ? 'para os filtros aplicados' : 'no período selecionado'}.
+              </p>
             ) : (
               <div className="space-y-4">
                 {byCategory.map((entry) => (
-                  <div key={entry.key}>
+                  <button
+                    key={entry.key}
+                    type="button"
+                    onClick={() => {
+                      const target = entry.key === SEM_CATEGORIA ? 'none' : entry.key;
+                      setCategoryFilter((prev) => (prev === target ? 'all' : target));
+                    }}
+                    title={`Ver os lançamentos de ${entry.label}`}
+                    className="w-full text-left rounded-md p-2 -m-2 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <div className="flex justify-between items-baseline mb-1">
                       <span className="font-medium text-gray-900">
                         {entry.label}
@@ -458,7 +622,7 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
                       />
                     </div>
                     <span className="text-xs text-gray-500">{entry.percentage.toFixed(1)}%</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -511,7 +675,9 @@ export function InvoiceClosing({ cards }: InvoiceClosingProps) {
           <div className="bg-white p-6 rounded-lg shadow">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Lançamentos do período ({inPeriod.length})</h3>
             {inPeriod.length === 0 ? (
-              <p className="text-gray-500">Nenhum lançamento no período selecionado.</p>
+              <p className="text-gray-500">
+                Nenhum lançamento {hasActiveFilters ? 'para os filtros aplicados' : 'no período selecionado'}.
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
