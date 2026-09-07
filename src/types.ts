@@ -2,6 +2,7 @@ export interface Card {
   id: string;
   bank: string;
   last_digits: string;
+  due_date?: number;
   created_at: string;
   updated_at: string;
 }

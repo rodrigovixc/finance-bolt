@@ -9,12 +9,13 @@ import { IncomeTypeForm } from './components/IncomeTypeForm';
 import { IncomeTypeList } from './components/IncomeTypeList';
 import { Auth } from './components/Auth';
 import { User } from '@supabase/supabase-js';
-import { CreditCard, Receipt, LayoutDashboard, Wallet, DollarSign, Tag } from 'lucide-react';
+import { CreditCard, Receipt, LayoutDashboard, Wallet, DollarSign, Tag, FileText } from 'lucide-react';
 import { UserMenu } from './components/UserMenu';
 import { CategoryForm } from './components/CategoryForm';
+import { InvoiceClosing } from './components/InvoiceClosing';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'cards' | 'income-types' | 'transactions' | 'categories'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'closing' | 'cards' | 'income-types' | 'transactions' | 'categories'>('dashboard');
   const [cards, setCards] = useState<Card[]>([]);
   const [incomeTypes, setIncomeTypes] = useState<IncomeType[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -137,6 +138,18 @@ function App() {
             Transações
           </button>
           <button
+            onClick={() => setActiveTab('closing')}
+            data-testid="closing-tab"
+            className={`flex items-center px-4 py-2 rounded-lg ${
+              activeTab === 'closing'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <FileText className="w-5 h-5 mr-2" />
+            Fechamento
+          </button>
+          <button
             onClick={() => setActiveTab('cards')}
             data-testid="cards-tab"
             className={`flex items-center px-4 py-2 rounded-lg ${
@@ -178,6 +191,10 @@ function App() {
           <div className="space-y-6">
             <Dashboard />
           </div>
+        )}
+
+        {activeTab === 'closing' && (
+          <InvoiceClosing cards={cards} />
         )}
 
         {activeTab === 'cards' && (

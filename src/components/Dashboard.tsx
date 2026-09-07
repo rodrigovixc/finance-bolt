@@ -20,7 +20,7 @@ import {
   Legend
 } from 'recharts';
 import { Receipt, CreditCard, Calendar, Tag } from 'lucide-react';
-import { formatCurrency } from '../utils';
+import { formatCurrency, formatISODate, fromISODate } from '../utils';
 
 interface DailyBalance {
   date: string;
@@ -157,14 +157,14 @@ export function Dashboard() {
       // Calcular saldo diário
       const dailyBalancesMap = (transactionsData as Transaction[]).reduce(
         (acc: Record<string, { income: number; expense: number }>, curr) => {
-          const dateStr = new Date(curr.date).toLocaleDateString('pt-BR');
-          if (!acc[dateStr]) {
-            acc[dateStr] = { income: 0, expense: 0 };
+          const dateKey = curr.date;
+          if (!acc[dateKey]) {
+            acc[dateKey] = { income: 0, expense: 0 };
           }
           if (curr.type === 'income') {
-            acc[dateStr].income += curr.amount;
+            acc[dateKey].income += curr.amount;
           } else {
-            acc[dateStr].expense += curr.amount;
+            acc[dateKey].expense += curr.amount;
           }
           return acc;
         },
@@ -172,13 +172,13 @@ export function Dashboard() {
       );
 
       const dailyBalancesArray = Object.entries(dailyBalancesMap)
+        .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, { income, expense }]) => ({
-          date,
+          date: formatISODate(date),
           income,
           expense,
           balance: income - expense
-        }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        }));
       setDailyBalances(dailyBalancesArray);
 
       // Agrupar despesas por categoria
@@ -221,7 +221,7 @@ export function Dashboard() {
 
   // Calcular saldo mensal usando as transações do mês selecionado
   const monthlyTransactions = transactions.filter((t) => {
-    const dt = new Date(t.date);
+    const dt = fromISODate(t.date);
     return dt.getMonth() === selectedMonth.getMonth() && dt.getFullYear() === selectedMonth.getFullYear();
   });
   let monthlyIncome = 0;
@@ -453,7 +453,7 @@ export function Dashboard() {
                             name: 'Entradas',
                             value: transactions
                               .filter((t) => {
-                                const dt = new Date(t.date);
+                                const dt = fromISODate(t.date);
                                 return (
                                   dt.getMonth() === selectedMonth.getMonth() &&
                                   dt.getFullYear() === selectedMonth.getFullYear() &&
@@ -466,7 +466,7 @@ export function Dashboard() {
                             name: 'Saídas',
                             value: transactions
                               .filter((t) => {
-                                const dt = new Date(t.date);
+                                const dt = fromISODate(t.date);
                                 return (
                                   dt.getMonth() === selectedMonth.getMonth() &&
                                   dt.getFullYear() === selectedMonth.getFullYear() &&
@@ -500,18 +500,18 @@ export function Dashboard() {
                     <LineChart
                       data={transactions
                         .filter((t) => {
-                          const dt = new Date(t.date);
+                          const dt = fromISODate(t.date);
                           return (
                             dt.getMonth() === selectedMonth.getMonth() &&
                             dt.getFullYear() === selectedMonth.getFullYear()
                           );
                         })
-                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                        .sort((a, b) => a.date.localeCompare(b.date))
                         .reduce((acc: { date: string; balance: number }[], t) => {
                           const lastBalance = acc.length > 0 ? acc[acc.length - 1].balance : 0;
                           const newBalance = t.type === 'income' ? lastBalance + t.amount : lastBalance - t.amount;
                           acc.push({
-                            date: new Date(t.date).toLocaleDateString('pt-BR'),
+                            date: formatISODate(t.date),
                             balance: newBalance
                           });
                           return acc;
@@ -557,7 +557,7 @@ export function Dashboard() {
                     {transactions.map((transaction) => (
                       <tr key={transaction.id}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(transaction.date).toLocaleDateString()}
+                          {formatISODate(transaction.date)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {transaction.description}
@@ -680,7 +680,7 @@ export function Dashboard() {
                       .map((transaction) => (
                         <tr key={transaction.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(transaction.date).toLocaleDateString()}
+                            {formatISODate(transaction.date)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {transaction.description}
